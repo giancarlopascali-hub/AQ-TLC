@@ -1,0 +1,98 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>AQ-TLC v1.0 | Advanced Quantitative Thin Layer Chromatography</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Outfit:wght@500;700&family=Roboto+Mono&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="index.css">
+</head>
+<body class="dark-mode">
+  <div class="app-container">
+    
+    <!-- Upload / Landing State -->
+    <div id="upload-prompt" class="landing-page">
+      <div class="landing-content">
+        <h1 class="hero-title">AQ-TLC <span class="version-tag">v1.0</span></h1>
+        <p class="hero-subtitle">High-precision densitometry & quantitative chromatography analysis workstation.</p>
+        <div class="upload-box" id="drop-zone">
+          <input type="file" id="file-input-prompter" accept="image/*" style="display:none">
+          <div class="upload-icon">📸</div>
+          <div class="upload-text">Drop plate image or <span>Browse</span></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Main Workspace -->
+    <div id="app-grid" class="workspace" style="display:none">
+      
+      <!-- Toolbar Sidebar -->
+      <aside class="sidebar">
+        <header class="sidebar-header">
+          <div class="app-logo">AQ-TLC <span class="v-small">v1.0</span></div>
+          <div class="status-badge" id="lane-count-badge">0 Lanes</div>
+        </header>
+
+        <div class="sidebar-scroll">
+          <div class="sidebar-section" style="padding:4px 10px; border-bottom:1px solid rgba(255,255,255,0.05)">
+            <div class="nav-grid" style="gap:4px">
+              <button class="nav-item secondary" id="btn-new" style="padding:4px; font-size:0.75rem">📂 New</button>
+              <button class="nav-item secondary" id="btn-reset" style="padding:4px; font-size:0.75rem">🔄 Reset</button>
+            </div>
+          </div>
+
+          <div class="sidebar-section" style="padding:4px 10px; border-bottom:1px solid rgba(255,255,255,0.05)">
+            <div class="sidebar-title" style="margin-bottom:4px; font-size:0.65rem; color:var(--text-dim)">TOOLS & ACTIONS</div>
+            <div class="tool-grid" style="grid-template-columns: repeat(3, 1fr); gap: 2px;">
+              <button class="tool-btn small" data-tool="roi" title="Crop ROI" style="padding:2px">📦</button>
+              <button class="tool-btn small" data-tool="pan" title="Pan" style="padding:2px">🖐️</button>
+              <button class="tool-btn small" data-tool="rotate_img" title="Rotate" style="padding:2px">🔄</button>
+              <button class="tool-btn small" data-tool="select" title="Select" style="padding:2px">🖱️</button>
+              <button class="tool-btn small" data-tool="line" title="Lines" style="padding:2px">📏</button>
+              <button class="tool-btn small" data-tool="spotting" title="Marks" style="padding:2px">📍</button>
+            </div>
+            <button class="action-btn primary small" id="btn-calc-lanes" style="margin-top:4px; font-size:0.7rem; padding:4px; width:100%">📡 Find Lanes</button>
+          </div>
+
+          <div class="sidebar-section" id="peak-params-section" style="padding:4px 10px; border-bottom:1px solid rgba(255,255,255,0.05)">
+            <div class="sidebar-title" style="margin-bottom:4px; font-size:0.65rem; color:var(--text-dim)">PEAK INTEGRATION</div>
+            <div class="slider-row" style="margin-bottom:2px">
+              <div class="slider-header" style="font-size:0.7rem"><label>Sens.</label><span id="peak-prominence-val">40</span></div>
+              <input type="range" id="peak-prominence" min="1" max="80" value="40" style="height:12px">
+            </div>
+            <div class="slider-row" style="margin-bottom:2px">
+              <div class="slider-header" style="font-size:0.7rem"><label>Res.</label><span id="peak-distance-val">8</span></div>
+              <input type="range" id="peak-distance" min="1" max="100" value="8" style="height:12px">
+            </div>
+            <div class="slider-row">
+              <div class="slider-header" style="font-size:0.7rem"><label>Width %</label><span id="peak-threshold-val">50</span></div>
+              <input type="range" id="peak-threshold" min="5" max="95" value="50" style="height:12px">
+            </div>
+          </div>
+
+          <div class="sidebar-section" id="export-section" style="padding:4px 10px">
+            <button class="action-btn secondary" id="btn-export-all" style="width:100%; font-size:0.75rem; padding:4px">📄 Full Report</button>
+          </div>
+        </div>
+      </aside>
+
+      <!-- Viewer Container -->
+      <main class="viewer-main">
+        <canvas id="canvas-main"></canvas>
+      </main>
+
+      <!-- Analysis Sidebar -->
+      <aside class="analysis-panel">
+        <div id="densitogram-list">
+          <!-- Populated by JS -->
+        </div>
+      </aside>
+
+    </div>
+  </div>
+
+  <script src="app.js"></script>
+</body>
+</html>
