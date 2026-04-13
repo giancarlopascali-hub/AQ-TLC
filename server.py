@@ -587,8 +587,9 @@ def generate_profiles():
         return jsonify({'error': str(e)})
 
 if __name__ == '__main__':
+    port = int(os.environ.get('PORT', 7860))
     print("=" * 60, flush=True)
     print("  TLC Detection Server", flush=True)
-    print("  Open browser at:  http://localhost:5050", flush=True)
+    print(f"  Open browser at:  http://localhost:{port}", flush=True)
     print("=" * 60, flush=True)
-    app.run(host='0.0.0.0', port=5050, debug=False)
+    app.run(host='0.0.0.0', port=port, debug=False)
