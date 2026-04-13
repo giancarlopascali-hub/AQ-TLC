@@ -634,9 +634,9 @@ async function exportReport() {
     await new Promise(r => img.onload = r);
     
     sctx.save();
-    // Crop and Rotate so that Origin is on the LEFT, Front on the RIGHT
+    // Crop and Rotate so that Front is on the LEFT, Origin on the RIGHT (User requested flip)
     sctx.translate(solventRange/2, l.w/2);
-    sctx.rotate(-Math.PI/2 - l.angle); // Rotate 90deg CCW to move bottom (Origin) to Left
+    sctx.rotate(Math.PI/2 - l.angle); // Rotate 90deg CW to move bottom (Origin) to Right
     sctx.drawImage(img, -l.cx, -l.cy); 
     sctx.restore();
 
@@ -646,20 +646,18 @@ async function exportReport() {
         (l.peaks || []).forEach(pk => {
             const lb = pk.lb !== undefined ? pk.lb : Math.max(0, pk.idx - 5);
             const rb = pk.rb !== undefined ? pk.rb : Math.min(n-1, pk.idx + 5);
-            // Since Origin is LEFT, and pk.rf is distance from Origin:
-            const x_center = pk.rf * solventRange;
-            const width_px = ((rb - lb) / (n - 1)) * solventRange;
-            const x_start = x_center - width_px / 2; // Approximate center alignment
             
-            // Better: use relative indices from the same p_rev logic
-            const x_pos_lb = (1 - rb/(n-1)) * solventRange; // Relative to Origin Left
-            const x_pos_rb = (1 - lb/(n-1)) * solventRange;
+            // Flipped: Origin is on the RIGHT. 
+            // rb (integrated index closest to Front) is on the LEFT side of the strip.
+            // lb (integrated index closest to Origin) is on the RIGHT side.
+            const x_pos_rb_flipped = (lb/(n-1)) * solventRange; 
+            const x_pos_lb_flipped = (rb/(n-1)) * solventRange;
             
             sctx.fillStyle = 'rgba(255,215,0,0.35)';
-            sctx.fillRect(x_pos_lb, 0, x_pos_rb - x_pos_lb, l.w);
+            sctx.fillRect(x_pos_rb_flipped, 0, x_pos_lb_flipped - x_pos_rb_flipped, l.w);
             sctx.strokeStyle = 'rgba(255,165,0,0.8)'; sctx.lineWidth = 1;
-            sctx.beginPath(); sctx.moveTo(x_pos_lb, 0); sctx.lineTo(x_pos_lb, l.w); sctx.stroke();
-            sctx.beginPath(); sctx.moveTo(x_pos_rb, 0); sctx.lineTo(x_pos_rb, l.w); sctx.stroke();
+            sctx.beginPath(); sctx.moveTo(x_pos_rb_flipped, 0); sctx.lineTo(x_pos_rb_flipped, l.w); sctx.stroke();
+            sctx.beginPath(); sctx.moveTo(x_pos_lb_flipped, 0); sctx.lineTo(x_pos_lb_flipped, l.w); sctx.stroke();
         });
     }
 
