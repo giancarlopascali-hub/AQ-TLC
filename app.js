@@ -616,7 +616,37 @@ function init() {
   // Set default tool
   document.querySelector('[data-tool="pan"]').classList.add('active');
   render();
+
+  // Keyboard Delete/Backspace Filter
+  window.addEventListener('keydown', e => {
+    // If the user is typing in ANY input field, ignore global deletion shortcuts
+    const isEditing = e.target.tagName === 'INPUT' || 
+                      e.target.tagName === 'TEXTAREA' || 
+                      e.target.isContentEditable;
+    if (isEditing) return;
+
+    if (e.key === 'Delete' || e.key === 'Backspace') {
+      if (state.activeTool === 'select') {
+        let changed = false;
+        if (state.activeLane) {
+          state.lanes = state.lanes.filter(l => l !== state.activeLane);
+          state.activeLane = null; changed = true;
+        }
+        if (state.activeLine) {
+          state.lines = state.lines.filter(l => l !== state.activeLine);
+          state.activeLine = null; changed = true;
+        }
+        if (state.activeMark) {
+          state.spottingMarks = state.spottingMarks.filter(m => m !== state.activeMark);
+          state.activeMark = null; changed = true;
+        }
+        if (changed) { renderProfiles(); render(); }
+      }
+    }
+  });
 }
+
+const $$ = s => document.querySelectorAll(s);
 
 async function exportReport() {
     if (!state.activeLane) { alert("Please select a lane first."); return; }
