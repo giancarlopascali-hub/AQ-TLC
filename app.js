@@ -178,6 +178,8 @@ function renderProfiles() {
                         <th style="text-align:center">Rf</th>
                         <th style="text-align:right">Area</th>
                         <th style="text-align:right">%</th>
+                        <th style="text-align:center">Abs Ratio</th>
+                        <th style="text-align:right">% Corr.</th>
                     </tr>
                 </thead>
                 <tbody id="peak-table-body"></tbody>
@@ -187,8 +189,10 @@ function renderProfiles() {
     list.appendChild(item);
 
     const totalArea = (l.peaks || []).reduce((sum, pk) => sum + pk.area, 0);
+    const totalCorrArea = (l.peaks || []).reduce((sum, pk) => sum + (pk.area / (pk.absRatio || 1)), 0);
     const tbody = $('peak-table-body');
     (l.peaks || []).forEach((pk, i) => {
+        const corrArea = pk.area / (pk.absRatio || 1);
         const tr = document.createElement('tr');
         tr.style.borderBottom = '1px solid var(--border)';
         tr.innerHTML = `
@@ -200,6 +204,12 @@ function renderProfiles() {
             <td style="text-align:center">${pk.rf.toFixed(3)}</td>
             <td style="text-align:right">${pk.area.toLocaleString(undefined, {maximumFractionDigits:1})}</td>
             <td style="text-align:right; font-weight:700">${totalArea > 0 ? ((pk.area/totalArea)*100).toFixed(1) : 0}%</td>
+            <td style="text-align:center">
+                <input type="number" step="0.1" value="${pk.absRatio || 1}" 
+                       style="background:transparent; border:1px solid rgba(255,255,255,0.2); border-radius:4px; color:#fff; width:60px; text-align:center"
+                       onchange="state.activeLane.peaks[${i}].absRatio = parseFloat(this.value) || 1; renderProfiles();">
+            </td>
+            <td style="text-align:right; font-weight:700; color:#58a6ff">${totalCorrArea > 0 ? ((corrArea/totalCorrArea)*100).toFixed(1) : 0}%</td>
         `;
         tbody.appendChild(tr);
     });
@@ -424,13 +434,21 @@ async function applyCrop() {
 }
 
 window.onkeydown = e => {
+    const isEditing = e.target.tagName === 'INPUT' || 
+                      e.target.tagName === 'TEXTAREA' || 
+                      e.target.isContentEditable;
+    if (isEditing) return;
+
     if ((e.ctrlKey || e.metaKey) && e.key === 'z') { e.preventDefault(); undo(); }
     if (e.key === 'Delete' || e.key === 'Backspace') {
-        saveState();
-        if (state.activeMark) { state.spottingMarks = state.spottingMarks.filter(m => m !== state.activeMark); state.activeMark = null; }
-        else if (state.activeLine) { state.lines = state.lines.filter(l => l !== state.activeLine); state.activeLine = null; }
-        else if (state.activeLane) { state.lanes = state.lanes.filter(l => l !== state.activeLane); state.activeLane = null; renderProfiles(); }
-        render();
+        if (state.activeTool === 'select') {
+            saveState();
+            let changed = false;
+            if (state.activeMark) { state.spottingMarks = state.spottingMarks.filter(m => m !== state.activeMark); state.activeMark = null; changed = true; }
+            else if (state.activeLine) { state.lines = state.lines.filter(l => l !== state.activeLine); state.activeLine = null; changed = true; }
+            else if (state.activeLane) { state.lanes = state.lanes.filter(l => l !== state.activeLane); state.activeLane = null; changed = true; renderProfiles(); }
+            if (changed) render();
+        }
     }
 };
 
@@ -617,33 +635,7 @@ function init() {
   document.querySelector('[data-tool="pan"]').classList.add('active');
   render();
 
-  // Keyboard Delete/Backspace Filter
-  window.addEventListener('keydown', e => {
-    // If the user is typing in ANY input field, ignore global deletion shortcuts
-    const isEditing = e.target.tagName === 'INPUT' || 
-                      e.target.tagName === 'TEXTAREA' || 
-                      e.target.isContentEditable;
-    if (isEditing) return;
 
-    if (e.key === 'Delete' || e.key === 'Backspace') {
-      if (state.activeTool === 'select') {
-        let changed = false;
-        if (state.activeLane) {
-          state.lanes = state.lanes.filter(l => l !== state.activeLane);
-          state.activeLane = null; changed = true;
-        }
-        if (state.activeLine) {
-          state.lines = state.lines.filter(l => l !== state.activeLine);
-          state.activeLine = null; changed = true;
-        }
-        if (state.activeMark) {
-          state.spottingMarks = state.spottingMarks.filter(m => m !== state.activeMark);
-          state.activeMark = null; changed = true;
-        }
-        if (changed) { renderProfiles(); render(); }
-      }
-    }
-  });
 }
 
 const $$ = s => document.querySelectorAll(s);
@@ -728,13 +720,19 @@ async function exportReport() {
 
     // 3. Integration Table Data
     const totalArea = (l.peaks || []).reduce((s, p) => s + p.area, 0);
-    const rows = (l.peaks || []).map((pk, i) => `
+    const totalCorrArea = (l.peaks || []).reduce((s, p) => s + (p.area / (p.absRatio || 1)), 0);
+    const rows = (l.peaks || []).map((pk, i) => {
+        const corrArea = pk.area / (pk.absRatio || 1);
+        return `
         <tr>
             <td>${pk.name || '#'+(i+1)}</td>
             <td style="text-align:center">${pk.rf.toFixed(3)}</td>
             <td style="text-align:right">${pk.area.toFixed(1)}</td>
             <td style="text-align:right; font-weight:700; color:#0366d6">${totalArea > 0 ? ((pk.area/totalArea)*100).toFixed(1) : 0}%</td>
-        </tr>`).join('');
+            <td style="text-align:center">${pk.absRatio || 1}</td>
+            <td style="text-align:right; font-weight:700; color:#e34c26">${totalCorrArea > 0 ? ((corrArea/totalCorrArea)*100).toFixed(1) : 0}%</td>
+        </tr>`;
+    }).join('');
 
     // Aligned Report Geometry (Exactly PAD_L in our high-res draw was 80)
     const html = `<html><head><title>AQ-TLC Analytical - ${l.name || l.id}</title><style>
@@ -760,7 +758,7 @@ async function exportReport() {
             <img src="${chartImgUrl}" class="chart-img">
         </div>
         <h3 style="margin-top:40px; border-bottom:2px solid #eee; padding-bottom:10px; font-size:0.9rem">QUANTITATIVE INTEGRATION</h3>
-        <table><thead><tr><th>PEAK NAME</th><th style="text-align:center">Rf</th><th style="text-align:right">AREA (AU)</th><th style="text-align:right">% AREA</th></tr></thead><tbody>${rows}</tbody></table>
+        <table><thead><tr><th>PEAK NAME</th><th style="text-align:center">Rf</th><th style="text-align:right">AREA (AU)</th><th style="text-align:right">% AREA</th><th style="text-align:center">ABS RATIO</th><th style="text-align:right">% CORR. AREA</th></tr></thead><tbody>${rows}</tbody></table>
         <script>window.onload = () => { setTimeout(() => window.print(), 1000); }</script>
     </body></html>`;
 

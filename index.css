@@ -60,7 +60,7 @@ body {
 /* Main Workspace */
 .workspace {
   display: grid;
-  grid-template-columns: 260px 1fr 320px;
+  grid-template-columns: 260px 1fr 450px;
   height: 100vh;
 }
 
