@@ -530,7 +530,17 @@ def generate_profiles():
                 # For each peak detected in the 1D profile, we find the dominant 2D spot in its vertical band.
                 model_type = data.get('model_type', 'adaptive') # Default to adaptive refinement
                 for i, idx in enumerate(peak_indices):
-                    rf = float(idx) / (n - 1) if n > 1 else 0.0
+                    # CALIBRATED Rf calculation (Origin Line to Front Line)
+                    # The Box is 1.10x the solvent distance.
+                    # Padding at each end is 0.05 / 1.10 of the total height.
+                    n = len(p_rev)
+                    y_fract = 1.0 - (float(idx) / (n - 1)) if n > 1 else 0.0
+                    # y_fract: 0 at Front-edge of box, 1 at Origin-edge of box
+                    # Origin Line is at approx 0.9545, Front Line is at approx 0.04545
+                    y_origin_line = 1.05 / 1.10
+                    y_front_line  = 0.05 / 1.10
+                    rf = (y_origin_line - y_fract) / (y_origin_line - y_front_line)
+                    rf = max(0.0, min(1.0, rf)) # Clamp to valid range
                     lb, rb = int(properties['left_bases'][i]), int(properties['right_bases'][i])
                     
                     # ── FWHM Visual Banding (v1 chromatography style) ──

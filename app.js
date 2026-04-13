@@ -710,15 +710,17 @@ async function exportReport() {
     });
     hctx.stroke();
 
-    // Rf Tick Marks 0 -> 1
+    // Rf Tick Marks 0 -> 1 (Calibrated to Origin/Front Lines)
     hctx.fillStyle = '#000'; hctx.font = 'bold 24px Inter'; hctx.textAlign = 'center';
     hctx.fillText('Retention Factor (Rf)', 800, 785);
     for(let i=0; i<=10; i++) {
         const rf = i/10;
-        const x = padL + rf * pw;
+        // rel_pos maps the 0..1 Rf range to the internal 1.10x Lane Box scale
+        const rel_pos = (0.05 / 1.1) + rf * (1.0 / 1.1);
+        const x = padL + rel_pos * pw;
         hctx.font = '18px Inter';
         hctx.fillText(rf.toFixed(1), x, 730);
-        hctx.beginPath(); hctx.moveTo(x, 700); hctx.lineTo(x, 690); hctx.stroke();
+        hctx.beginPath(); hctx.moveTo(x, 700); hctx.lineTo(x, 693); hctx.stroke();
     }
 
     const laneStripUrl = laneStrip.toDataURL();
