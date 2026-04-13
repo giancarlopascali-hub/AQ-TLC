@@ -5,5 +5,6 @@ RUN pip install --no-cache-dir -r requirements.txt
 COPY . .
 # HF spaces pass the PORT environment variable to the docker container.
 # It defaults to 7860.
+ENV PORT=7860
 EXPOSE 7860
 CMD ["python", "server.py"]
