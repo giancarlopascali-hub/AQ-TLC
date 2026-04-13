@@ -634,9 +634,9 @@ async function exportReport() {
     await new Promise(r => img.onload = r);
     
     sctx.save();
-    // Translate and rotate so that Origin is at X=0 and Front is at X=solventRange
+    // Crop and Rotate so that Origin is on the LEFT, Front on the RIGHT
     sctx.translate(solventRange/2, l.w/2);
-    sctx.rotate(Math.PI/2 - l.angle); 
+    sctx.rotate(-Math.PI/2 - l.angle); // Rotate 90deg CCW to move bottom (Origin) to Left
     sctx.drawImage(img, -l.cx, -l.cy); 
     sctx.restore();
 
@@ -646,13 +646,20 @@ async function exportReport() {
         (l.peaks || []).forEach(pk => {
             const lb = pk.lb !== undefined ? pk.lb : Math.max(0, pk.idx - 5);
             const rb = pk.rb !== undefined ? pk.rb : Math.min(n-1, pk.idx + 5);
-            const x_top = (rb/(n-1)) * solventRange;
-            const x_bot = (lb/(n-1)) * solventRange;
+            // Since Origin is LEFT, and pk.rf is distance from Origin:
+            const x_center = pk.rf * solventRange;
+            const width_px = ((rb - lb) / (n - 1)) * solventRange;
+            const x_start = x_center - width_px / 2; // Approximate center alignment
+            
+            // Better: use relative indices from the same p_rev logic
+            const x_pos_lb = (1 - rb/(n-1)) * solventRange; // Relative to Origin Left
+            const x_pos_rb = (1 - lb/(n-1)) * solventRange;
+            
             sctx.fillStyle = 'rgba(255,215,0,0.35)';
-            sctx.fillRect(x_bot, 0, x_top - x_bot, l.w);
+            sctx.fillRect(x_pos_lb, 0, x_pos_rb - x_pos_lb, l.w);
             sctx.strokeStyle = 'rgba(255,165,0,0.8)'; sctx.lineWidth = 1;
-            sctx.beginPath(); sctx.moveTo(x_bot, 0); sctx.lineTo(x_bot, l.w); sctx.stroke();
-            sctx.beginPath(); sctx.moveTo(x_top, 0); sctx.lineTo(x_top, l.w); sctx.stroke();
+            sctx.beginPath(); sctx.moveTo(x_pos_lb, 0); sctx.lineTo(x_pos_lb, l.w); sctx.stroke();
+            sctx.beginPath(); sctx.moveTo(x_pos_rb, 0); sctx.lineTo(x_pos_rb, l.w); sctx.stroke();
         });
     }
 
@@ -662,11 +669,10 @@ async function exportReport() {
     const hctx = hiResChart.getContext('2d');
     hctx.fillStyle = '#ffffff'; hctx.fillRect(0,0,1600,800);
     
-    // Re-render profile into high-res context if we can, or just scale carefully
-    // Since renderProfiles is complex, let's just use the current chart's dataURL for now 
-    // but at a higher scale or redraw it. 
-    // Actually, I'll just use the high-res canvas to draw a cleaner version.
-    const p = l.profile; const padL = 80; const padR = 120; const pw = 1600 - padL - padR;
+    // DRAW PROFILE IN REVERSE (Origin at Left)
+    const p_orig = l.profile; 
+    const p = [...p_orig].reverse(); // Now p[0] is Origin
+    const padL = 80; const padR = 120; const pw = 1600 - padL - padR;
     const maxVal = Math.max(...p);
     hctx.strokeStyle = '#0366d6'; hctx.lineWidth = 3; hctx.beginPath();
     p.forEach((v, i) => {
@@ -675,9 +681,17 @@ async function exportReport() {
         if (i === 0) hctx.moveTo(x, y); else hctx.lineTo(x, y);
     });
     hctx.stroke();
-    // Labels
-    hctx.fillStyle = '#000'; hctx.font = 'bold 24px Inter'; hctx.fillText('Retention Factor (Rf)', 800, 780);
-    hctx.fillText('Signal (AU)', 20, 400);
+
+    // Rf Tick Marks 0 -> 1
+    hctx.fillStyle = '#000'; hctx.font = 'bold 24px Inter'; hctx.textAlign = 'center';
+    hctx.fillText('Retention Factor (Rf)', 800, 785);
+    for(let i=0; i<=10; i++) {
+        const rf = i/10;
+        const x = padL + rf * pw;
+        hctx.font = '18px Inter';
+        hctx.fillText(rf.toFixed(1), x, 730);
+        hctx.beginPath(); hctx.moveTo(x, 700); hctx.lineTo(x, 690); hctx.stroke();
+    }
 
     const laneStripUrl = laneStrip.toDataURL();
     const chartImgUrl = hiResChart.toDataURL();
