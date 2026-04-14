@@ -291,18 +291,21 @@ function renderProfiles() {
                 const px = PAD_L + (pk.idx/(p.length-1)) * plotW;
                 const lb_x = PAD_L + (pk.lb/(p.length-1)) * plotW;
                 const rb_x = PAD_L + (pk.rb/(p.length-1)) * plotW;
-                if (Math.abs(mx - lb_x) < 10) hitBound = {pk, type: 'lb'};
+                if (Math.abs(mx - px) < 20) hitApex = pk; // APEX takes physical grip priority with a wider radius
+                else if (Math.abs(mx - lb_x) < 10) hitBound = {pk, type: 'lb'};
                 else if (Math.abs(mx - rb_x) < 10) hitBound = {pk, type: 'rb'};
-                else if (Math.abs(mx - px) < 15) hitApex = pk;
             }
 
             if (me.button === 2) { // Right click: remove
-                if (hitApex) { l.peaks = l.peaks.filter(pk => pk !== hitApex); renderProfiles(); render(); }
-            } else if (hitBound) {
-                state.isDraggingBound = hitBound;
+                if (hitApex) { saveState(); l.peaks = l.peaks.filter(pk => pk !== hitApex); renderProfiles(); render(); }
             } else if (hitApex) {
+                saveState();
                 state.isDraggingPeak = hitApex;
+            } else if (hitBound) {
+                saveState();
+                state.isDraggingBound = hitBound;
             } else { // Single Click for new peak
+                saveState();
                 const val = p[idx];
                 let lb=idx, rb=idx;
                 while(lb > 0 && p[lb-1] <= p[lb]) lb--;
@@ -754,9 +757,9 @@ async function exportReport(type = null) {
                 const rb = pk.rb !== undefined ? pk.rb : Math.min(n-1, pk.idx + 5);
                 const x_pos_rb_flipped = (lb/(n-1)) * boxHeight; 
                 const x_pos_lb_flipped = (rb/(n-1)) * boxHeight;
-                sctx.fillStyle = 'rgba(255,215,0,0.35)';
+                sctx.fillStyle = pk.manual ? 'rgba(227,76,38,0.35)' : 'rgba(255,215,0,0.35)';
                 sctx.fillRect(x_pos_rb_flipped, 0, x_pos_lb_flipped - x_pos_rb_flipped, l.w);
-                sctx.strokeStyle = 'rgba(255,165,0,0.8)'; sctx.lineWidth = 1;
+                sctx.strokeStyle = pk.manual ? 'rgba(227,76,38,0.8)' : 'rgba(255,165,0,0.8)'; sctx.lineWidth = 1;
                 sctx.beginPath(); sctx.moveTo(x_pos_rb_flipped, 0); sctx.lineTo(x_pos_rb_flipped, l.w); sctx.stroke();
                 sctx.beginPath(); sctx.moveTo(x_pos_lb_flipped, 0); sctx.lineTo(x_pos_lb_flipped, l.w); sctx.stroke();
             });
@@ -801,8 +804,8 @@ async function exportReport(type = null) {
             const corrArea = pk.area / (pk.absRatio || 1);
             return `
             <tr>
-                <td>${pk.name || '#'+(i+1)}</td>
-                <td style="text-align:center">${pk.rf.toFixed(3)}</td>
+                <td style="color:${pk.manual ? '#e34c26' : 'inherit'}; font-weight:${pk.manual?'600':'normal'}">${pk.name || '#'+(i+1)}</td>
+                <td style="text-align:center">${pk.rf.toFixed(3)}${pk.manual ? '<span style="color:#e34c26; margin-left:2px">*</span>' : ''}</td>
                 <td style="text-align:right">${pk.area.toFixed(1)}</td>
                 <td style="text-align:right; font-weight:700; color:#0366d6">${totalArea > 0 ? ((pk.area/totalArea)*100).toFixed(1) : 0}%</td>
                 <td style="text-align:center">${pk.absRatio || 1}</td>
