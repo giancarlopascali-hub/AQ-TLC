@@ -199,12 +199,12 @@ function renderProfiles() {
         const tr = document.createElement('tr');
         tr.style.borderBottom = '1px solid var(--border)';
         tr.innerHTML = `
-            <td style="color:#ffd700; font-weight:600">
+            <td style="color:${pk.manual ? '#e34c26' : '#ffd700'}; font-weight:600">
                 <input type="text" value="${pk.name || '#'+(i+1)}" 
-                       style="background:transparent; border:none; color:#ffd700; width:60px"
+                       style="background:transparent; border:none; color:inherit; width:60px"
                        onchange="state.activeLane.peaks[${i}].name = this.value;">
             </td>
-            <td style="text-align:center">${pk.rf.toFixed(3)}</td>
+            <td style="text-align:center">${pk.rf.toFixed(3)}${pk.manual ? '<span style="color:#e34c26; margin-left:2px">*</span>' : ''}</td>
             <td style="text-align:right">${pk.area.toLocaleString(undefined, {maximumFractionDigits:1})}</td>
             <td style="text-align:right; font-weight:700">${totalArea > 0 ? ((pk.area/totalArea)*100).toFixed(1) : 0}%</td>
             <td style="text-align:center">
@@ -253,10 +253,29 @@ function renderProfiles() {
 
         // Peaks
         (l.peaks || []).forEach(pk => {
-            const px = PAD_L + (pk.idx/(p.length-1)) * plotW; const py = PAD_T + (1-(pk.height-minV)/range)*plotH;
-            ctx.setLineDash([5,3]); ctx.strokeStyle='rgba(255,214,0,0.6)'; ctx.beginPath(); ctx.moveTo(px,py); ctx.lineTo(px,PAD_T+plotH); ctx.stroke();
-            ctx.setLineDash([]); ctx.fillStyle='#ffd700'; ctx.beginPath(); ctx.arc(px,py,4,0,Math.PI*2); ctx.fill();
-            ctx.font='bold 10px Roboto Mono'; ctx.fillText(pk.rf.toFixed(2), px, py-12);
+            const px = PAD_L + (pk.idx/(p.length-1)) * plotW; 
+            const py = PAD_T + (1-(pk.height-minV)/range)*plotH;
+            const lb_x = PAD_L + (pk.lb/(p.length-1)) * plotW;
+            const rb_x = PAD_L + (pk.rb/(p.length-1)) * plotW;
+            
+            const color = pk.manual ? '#e34c26' : '#ffd700';
+            const rgbaFill = pk.manual ? 'rgba(227, 76, 38, 0.2)' : 'rgba(255, 215, 0, 0.2)';
+            const rgbaLine = pk.manual ? 'rgba(227, 76, 38, 0.6)' : 'rgba(255, 215, 0, 0.6)';
+
+            // Draw integration boundaries
+            ctx.fillStyle = rgbaFill;
+            ctx.fillRect(lb_x, PAD_T, rb_x - lb_x, plotH);
+            ctx.strokeStyle = rgbaLine; ctx.lineWidth = 2;
+            ctx.beginPath(); ctx.moveTo(lb_x, PAD_T); ctx.lineTo(lb_x, PAD_T+plotH); ctx.stroke();
+            ctx.beginPath(); ctx.moveTo(rb_x, PAD_T); ctx.lineTo(rb_x, PAD_T+plotH); ctx.stroke();
+            
+            // Hover handles hint for dragging
+            ctx.beginPath(); ctx.arc(lb_x, PAD_T+plotH/2, 4, 0, Math.PI*2); ctx.arc(rb_x, PAD_T+plotH/2, 4, 0, Math.PI*2); ctx.fillStyle=rgbaLine; ctx.fill();
+
+            // Draw Apex
+            ctx.setLineDash([5,3]); ctx.strokeStyle=rgbaLine; ctx.beginPath(); ctx.moveTo(px,py); ctx.lineTo(px,PAD_T+plotH); ctx.stroke();
+            ctx.setLineDash([]); ctx.fillStyle=color; ctx.beginPath(); ctx.arc(px,py,4,0,Math.PI*2); ctx.fill();
+            ctx.font='bold 10px Roboto Mono'; ctx.fillStyle=color; ctx.fillText((pk.manual?'*':'')+pk.rf.toFixed(2), px, py-12);
         });
 
         // peak interactions (automatically active)
@@ -265,17 +284,29 @@ function renderProfiles() {
             const mx = me.clientX - mrect.left; const my = me.clientY - mrect.top;
             let idx = Math.round((mx - PAD_L) / plotW * (p.length - 1));
             idx = Math.max(0, Math.min(p.length-1, idx));
-            const hit = (l.peaks || []).find(pk => Math.abs(mx - (PAD_L + (pk.idx/(p.length-1))*plotW)) < 15);
+            
+            let hitBound = null;
+            let hitApex = null;
+            for (let pk of (l.peaks || [])) {
+                const px = PAD_L + (pk.idx/(p.length-1)) * plotW;
+                const lb_x = PAD_L + (pk.lb/(p.length-1)) * plotW;
+                const rb_x = PAD_L + (pk.rb/(p.length-1)) * plotW;
+                if (Math.abs(mx - lb_x) < 10) hitBound = {pk, type: 'lb'};
+                else if (Math.abs(mx - rb_x) < 10) hitBound = {pk, type: 'rb'};
+                else if (Math.abs(mx - px) < 15) hitApex = pk;
+            }
 
             if (me.button === 2) { // Right click: remove
-                if (hit) { l.peaks = l.peaks.filter(pk => pk !== hit); renderProfiles(); render(); }
-            } else if (hit) {
-                state.isDraggingPeak = hit;
-            } else { // Click for new peak
+                if (hitApex) { l.peaks = l.peaks.filter(pk => pk !== hitApex); renderProfiles(); render(); }
+            } else if (hitBound) {
+                state.isDraggingBound = hitBound;
+            } else if (hitApex) {
+                state.isDraggingPeak = hitApex;
+            } else { // Single Click for new peak
                 const val = p[idx];
                 let lb=idx, rb=idx;
-                while(lb > 0 && p[lb-1] < p[lb]) lb--;
-                while(rb < p.length-1 && p[rb+1] < p[rb]) rb++;
+                while(lb > 0 && p[lb-1] <= p[lb]) lb--;
+                while(rb < p.length-1 && p[rb+1] <= p[rb]) rb++;
                 const base = Math.min(p[lb], p[rb]);
                 const thresh = base + (val - base) * 0.50;
                 let v_lb = lb, v_rb = rb;
@@ -285,18 +316,45 @@ function renderProfiles() {
                 let area = 0;
                 for (let i = v_lb; i < v_rb; i++) area += (p[i] + p[i+1]) / 2 - base;
 
-                l.peaks.push({ idx, rf: idx/(p.length-1), height: val, area: Math.max(0, area), lb: v_lb, rb: v_rb });
+                l.peaks.push({ idx, rf: idx/(p.length-1), height: val, area: Math.max(0, area), lb: v_lb, rb: v_rb, manual: true });
                 l.peaks.sort((a,b)=>a.idx-b.idx); renderProfiles(); render();
             }
         };
         cv.ondblclick = () => updateDensitograms(true);
         cv.onmousemove = me => {
-            if (!state.isDraggingPeak) return;
             const mrect = cv.getBoundingClientRect();
             const mx = me.clientX - mrect.left;
             let idx = Math.round((mx - PAD_L) / plotW * (p.length - 1));
             idx = Math.max(0, Math.min(p.length-1, idx));
-            const pk = state.isDraggingPeak; pk.idx = idx; pk.rf = idx/(p.length-1); pk.height = p[idx];
+            
+            // Handle hover cursors dynamically
+            if (!state.isDraggingBound && !state.isDraggingPeak) {
+                let hoverType = 'default';
+                for (let pk of (l.peaks || [])) {
+                    const px = PAD_L + (pk.idx/(p.length-1)) * plotW;
+                    const lb_x = PAD_L + (pk.lb/(p.length-1)) * plotW;
+                    const rb_x = PAD_L + (pk.rb/(p.length-1)) * plotW;
+                    if (Math.abs(mx - lb_x) < 8 || Math.abs(mx - rb_x) < 8) hoverType = 'col-resize';
+                    else if (Math.abs(mx - px) < 10) hoverType = 'pointer';
+                }
+                cv.style.cursor = hoverType;
+            }
+
+            if (state.isDraggingBound) {
+                const {pk, type} = state.isDraggingBound;
+                if (type === 'lb') pk.lb = Math.min(pk.rb - 1, Math.max(0, idx));
+                else if (type === 'rb') pk.rb = Math.max(pk.lb + 1, Math.min(p.length-1, idx));
+                pk.manual = true;
+                const base = Math.min(p[pk.lb], p[pk.rb]);
+                let area = 0;
+                for (let i = pk.lb; i < pk.rb; i++) area += (p[i] + p[i+1]) / 2 - base;
+                pk.area = Math.max(0, area);
+                renderProfiles(); render();
+                return;
+            }
+
+            if (!state.isDraggingPeak) return;
+            const pk = state.isDraggingPeak; pk.idx = idx; pk.rf = idx/(p.length-1); pk.height = p[idx]; pk.manual = true;
             
             // Recalculate local bases for live "Gold Band" feedback
             let lb=idx, rb=idx;
@@ -310,13 +368,12 @@ function renderProfiles() {
 
             // Simple local numerical integration for live table updates
             let area = 0;
-            const threshold = ($('peak-threshold') ? $('peak-threshold').value : 50) / 100.0;
             for (let i = v_lb; i < v_rb; i++) area += (p[i] + p[i+1]) / 2 - base;
             pk.area = Math.max(0, area);
 
             renderProfiles(); render();
         };
-        cv.onmouseup = () => { if (state.isDraggingPeak) updateDensitograms(); state.isDraggingPeak = null; };
+        cv.onmouseup = () => { state.isDraggingPeak = null; state.isDraggingBound = null; cv.style.cursor='default'; };
         cv.oncontextmenu = e => e.preventDefault();
     }, 0);
 }

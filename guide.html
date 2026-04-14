@@ -48,11 +48,11 @@
     <ul>
         <li><strong>Naming:</strong> By default, peaks are marked `Lane 1`, `Peak 1`, etc. Click directly on the corresponding text box field to rename them meaningfully for your custom exports.</li>
         <li><strong>Automated Peak Discovery:</strong> Drag the <strong>Sensitivity (Sens.)</strong>, <strong>Resolution (Res.)</strong>, and <strong>Width %</strong> threshold sliders in the left panel to instantly tighten integration tolerances natively across your current sample until it maps purely against valid signals.</li>
-        <li><strong>Direct Densitogram Overrides:</strong> Automation isn't flawless for skewed plates. You can bypass the algorithms and draw completely manually:
+        <li><strong>Direct Densitogram Overrides:</strong> Automation isn't flawless for skewed plates. You can bypass the algorithms and draw completely manually. Any manually altered peaks will turn <strong>red</strong> in the chart, and will be explicitly marked with an asterisk <strong>(*)</strong> in the Rf column to visibly designate a manual override.
             <ul>
-                <li><strong>Resize:</strong> Hovering inside the blue signal chart exposes interactive cursors. Click and drag the vertical edges of a gold peak bounds laterally to expand or shrink its calculated region physically.</li>
-                <li><strong>Add Peaks:</strong> Double-click inside any empty space over the blue signal to manually spawn an entirely new designated peak interval.</li>
-                <li><strong>Delete Peaks:</strong> Click an existing gold peak bounding box directly within the chart to highlight it, and hit <code>Delete</code> on your keyboard to eliminate it.</li>
+                <li><strong>Resize:</strong> Hover over the vertical boundaries of any gold peak until your cursor turns into a horizontal resize arrow. Click and drag the true bound edges laterally to manually shrink or expand the physical integration layout.</li>
+                <li><strong>Add Peaks:</strong> <strong>Single-click</strong> inside any empty space over the blue signal curve to instantly spawn an entirely new algorithmically-centered peak interval.</li>
+                <li><strong>Delete Peaks:</strong> <strong>Right-click</strong> directly on the apex marker of an existing peak to delete it permanently.</li>
             </ul>
         </li>
         <li><strong>Understanding Abs Ratio:</strong> Some molecular bands inherently stain differently and saturate visual channels faster than others despite having identical equivalent purity weights. Setting the Abs Ratio acts as a correction factor mathematically. For example, if a band has a known absorptive bias factor of `0.5`, setting `0.5` causes the app to natively divide its absolute integrated Area by `0.5` when determining its proportional `% Corr. Area` impact across the total lane. It homogeneously defaults to `1` (which acts as neutral 1:1 proportionality).</li>
@@ -73,11 +73,13 @@
     </ul>
 
     <h2>6. Practical Laboratory Suggestions & Image Quality</h2>
-    <p>For the most scientifically reliable detection capability using software chromatography:</p>
+    <p>For the most scientifically reliable detection capability using software chromatography, consider both physical TLC best practices and photographic discipline:</p>
     <ul>
+      <li><strong>Optimizing TLC Runs:</strong> Use clean, level solvent chambers and ensure the chamber atmosphere is thoroughly saturated with solvent vapor (using filter paper pads) prior to dropping your plate. This fiercely avoids "smiling" wavefronts where edges unpredictably evaporate quicker and run irregularly, ensuring consistently parallel horizontal Rf bounds uniformly!</li>
+      <li><strong>Sample Spotting:</strong> Apply samples as highly concentrated spots, keeping them physically as tight as possible. Do not overload; broad starting streaks instantly devastate downstream vertical peak resolution.</li>
       <li><strong>Illumination is Key:</strong> Capture plate layouts purely under completely uniform, intensely bright lighting (e.g. inside a sealed UV/Vis documentation chamber). Minimize heavy cast shadows originating from ceiling fixtures hitting your hands or phone profile.</li>
       <li><strong>Background Contrast:</strong> Remove the TLC plate entirely from cluttered, reflective laboratory hardware shelves immediately prior to snapping the image. Stage it cleanly against a uniform expanse of stark white, matte printer paper or a pure black light-absorbing fabric board.</li>
-      <li><strong>Minimize Lens Distortion:</strong> Aim the camera squarely and symmetrically down onto the center axis directly overhead (birds-eye view). Dramatically angled photos skew focal planes, inherently corrupting the parallel consistency assumption required for lane-to-lane mapping geometry calculation!</li>
+      <li><strong>Minimize Lens Distortion:</strong> Aim the camera squarely and symmetrically down onto the center axis directly overhead (birds-eye view). Dramatically angled photos skew focal planes, inherently corrupting the parallel consistency assumption required for lane-to-lane mapping geometry calculation natively!</li>
     </ul>
     
   </div>
