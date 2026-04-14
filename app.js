@@ -761,10 +761,22 @@ async function exportReport() {
         <table><thead><tr><th>PEAK NAME</th><th style="text-align:center">Rf</th><th style="text-align:right">AREA (AU)</th><th style="text-align:right">% AREA</th><th style="text-align:center">ABS RATIO</th><th style="text-align:right">% CORR. AREA</th></tr></thead><tbody>${rows}</tbody></table>
         <script>window.onload = () => { setTimeout(() => window.print(), 1000); }</script>
     </body></html>`;
-
-    const win = window.open('', '_blank');
-    win.document.write(html);
-    win.document.close();
+    try {
+        const win = window.open('', '_blank');
+        win.document.write(html);
+        win.document.close();
+    } catch (e) {
+        console.warn("Popup document.write blocked by iframe sandbox. Falling back to explicit file download.", e);
+        const blob = new Blob([html], { type: 'text/html' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `AQ-TLC_Report_${l.name || l.id}.html`;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        setTimeout(() => URL.revokeObjectURL(url), 5000);
+    }
 }
 
 // ── Geometry Utilities ─────────────────────────────────────────────────────
