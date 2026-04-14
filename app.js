@@ -472,6 +472,7 @@ function handleFile(file) {
       state.lines=[]; state.lanes=[]; state.spottingMarks=[];
       state.activeLine=null; state.activeLane=null; state.activeMark=null;
       $('file-input-prompter').value = '';
+      renderProfiles();
       render();
     };
     img.src = e.target.result;
@@ -647,9 +648,9 @@ async function exportReport() {
     
     // 1. Create High-Resolution Rotated Lane Strip (TRIMMED TO ORIGIN/FRONT ONLY)
     const laneStrip = document.createElement('canvas');
-    // Align EXACTLY with solvent path (strip the 10% padding used for the plate box)
-    const solventRange = l.h / 1.10; // Extract the actual distance between lines
-    laneStrip.width = solventRange; laneStrip.height = l.w; 
+    // Align EXACTLY with the full lane box height to seamlessly match the profile chart coordinates
+    const boxHeight = l.h;
+    laneStrip.width = boxHeight; laneStrip.height = l.w; 
     const sctx = laneStrip.getContext('2d');
     
     const img = new Image(); img.src = state.imgB64;
@@ -657,7 +658,7 @@ async function exportReport() {
     
     sctx.save();
     // Crop and Rotate so that Front is on the LEFT, Origin on the RIGHT (User requested flip)
-    sctx.translate(solventRange/2, l.w/2);
+    sctx.translate(boxHeight/2, l.w/2);
     sctx.rotate(Math.PI/2 - l.angle); // Rotate 90deg CW to move bottom (Origin) to Right
     sctx.drawImage(img, -l.cx, -l.cy); 
     sctx.restore();
@@ -672,8 +673,8 @@ async function exportReport() {
             // Flipped: Origin is on the RIGHT. 
             // rb (integrated index closest to Front) is on the LEFT side of the strip.
             // lb (integrated index closest to Origin) is on the RIGHT side.
-            const x_pos_rb_flipped = (lb/(n-1)) * solventRange; 
-            const x_pos_lb_flipped = (rb/(n-1)) * solventRange;
+            const x_pos_rb_flipped = (lb/(n-1)) * boxHeight; 
+            const x_pos_lb_flipped = (rb/(n-1)) * boxHeight;
             
             sctx.fillStyle = 'rgba(255,215,0,0.35)';
             sctx.fillRect(x_pos_rb_flipped, 0, x_pos_lb_flipped - x_pos_rb_flipped, l.w);
