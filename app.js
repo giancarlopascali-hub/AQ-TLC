@@ -167,7 +167,10 @@ function renderProfiles() {
             <input type="text" class="lane-name-edit" value="${l.name || 'Lane '+l.id}" 
                    style="background:transparent; border:none; color:white; font-family:Outfit; font-size:1.2rem; font-weight:700; width:150px"
                    onchange="state.lanes.find(ln=>ln.id=='${l.id}').name = this.value; render();">
-            <button class="action-btn secondary" onclick="exportReport()" style="font-size:0.75rem; padding:4px 10px">📄 Export Lane</button>
+            <div style="display:flex; gap:6px">
+                <button class="action-btn secondary" onclick="exportReport()" style="font-size:0.75rem; padding:4px 10px" title="Export this active lane">📄 Export Lane</button>
+                <button class="action-btn primary" onclick="exportReport('all')" style="font-size:0.75rem; padding:4px 10px" title="Export all detected lanes into a multi-page report">📚 Full Report</button>
+            </div>
         </div>
         <canvas id="chart-active" style="width:100%; height:280px; background:#010409; border:1px solid var(--border); border-radius:8px"></canvas>
         <div class="integration-table-wrap" style="margin-top:20px">
@@ -623,7 +626,7 @@ function init() {
       $('peak-threshold-val').textContent = e.target.value;
       if (state.activeLane) updateDensitograms(true);
   };
-  $('btn-export-all').onclick = () => exportReport();
+
 
   document.querySelectorAll('.tool-btn').forEach(btn => { 
       btn.onclick = () => { 
@@ -641,138 +644,147 @@ function init() {
 
 const $$ = s => document.querySelectorAll(s);
 
-async function exportReport() {
-    if (!state.activeLane) { alert("Please select a lane first."); return; }
-    const l = state.activeLane;
-    const chart = $('chart-active');
+async function exportReport(type = null) {
+    let lanesToExport = [];
+    let isFullReport = false;
     
-    // 1. Create High-Resolution Rotated Lane Strip (TRIMMED TO ORIGIN/FRONT ONLY)
-    const laneStrip = document.createElement('canvas');
-    // Align EXACTLY with the full lane box height to seamlessly match the profile chart coordinates
-    const boxHeight = l.h;
-    laneStrip.width = boxHeight; laneStrip.height = l.w; 
-    const sctx = laneStrip.getContext('2d');
+    if (type === 'all') {
+        lanesToExport = state.lanes;
+        isFullReport = true;
+    } else {
+        if (!state.activeLane) { alert("Please select a lane first."); return; }
+        lanesToExport = [state.activeLane];
+    }
+    
+    if (!lanesToExport || lanesToExport.length === 0) { alert("No lanes to export."); return; }
     
     const img = new Image(); img.src = state.imgB64;
     await new Promise(r => img.onload = r);
-    
-    sctx.save();
-    // Crop and Rotate so that Front is on the LEFT, Origin on the RIGHT (User requested flip)
-    sctx.translate(boxHeight/2, l.w/2);
-    sctx.rotate(Math.PI/2 - l.angle); // Rotate 90deg CW to move bottom (Origin) to Right
-    sctx.drawImage(img, -l.cx, -l.cy); 
-    sctx.restore();
 
-    // Draw Gold Bands on the horizontal strip
-    const n = (l.profile || []).length;
-    if (n > 1) {
-        (l.peaks || []).forEach(pk => {
-            const lb = pk.lb !== undefined ? pk.lb : Math.max(0, pk.idx - 5);
-            const rb = pk.rb !== undefined ? pk.rb : Math.min(n-1, pk.idx + 5);
-            
-            // Flipped: Origin is on the RIGHT. 
-            // rb (integrated index closest to Front) is on the LEFT side of the strip.
-            // lb (integrated index closest to Origin) is on the RIGHT side.
-            const x_pos_rb_flipped = (lb/(n-1)) * boxHeight; 
-            const x_pos_lb_flipped = (rb/(n-1)) * boxHeight;
-            
-            sctx.fillStyle = 'rgba(255,215,0,0.35)';
-            sctx.fillRect(x_pos_rb_flipped, 0, x_pos_lb_flipped - x_pos_rb_flipped, l.w);
-            sctx.strokeStyle = 'rgba(255,165,0,0.8)'; sctx.lineWidth = 1;
-            sctx.beginPath(); sctx.moveTo(x_pos_rb_flipped, 0); sctx.lineTo(x_pos_rb_flipped, l.w); sctx.stroke();
-            sctx.beginPath(); sctx.moveTo(x_pos_lb_flipped, 0); sctx.lineTo(x_pos_lb_flipped, l.w); sctx.stroke();
-        });
-    }
-
-    // 2. High-Resolution Chart Export (Supersampled)
-    const hiResChart = document.createElement('canvas');
-    hiResChart.width = 1600; hiResChart.height = 800;
-    const hctx = hiResChart.getContext('2d');
-    hctx.fillStyle = '#ffffff'; hctx.fillRect(0,0,1600,800);
-    
-    // DRAW PROFILE IN REVERSE (Origin at Left)
-    const p_orig = l.profile; 
-    const p = [...p_orig].reverse(); // Now p[0] is Origin
-    const padL = 80; const padR = 120; const pw = 1600 - padL - padR;
-    const maxVal = Math.max(...p);
-    hctx.strokeStyle = '#0366d6'; hctx.lineWidth = 3; hctx.beginPath();
-    p.forEach((v, i) => {
-        const x = padL + (i / (p.length - 1)) * pw;
-        const y = 700 - (v / maxVal) * 600;
-        if (i === 0) hctx.moveTo(x, y); else hctx.lineTo(x, y);
-    });
-    hctx.stroke();
-
-    // Rf Tick Marks 0 -> 1 (Calibrated to Origin/Front Lines)
-    hctx.fillStyle = '#000'; hctx.font = 'bold 24px Inter'; hctx.textAlign = 'center';
-    hctx.fillText('Retention Factor (Rf)', 800, 785);
-    for(let i=0; i<=10; i++) {
-        const rf = i/10;
-        // rel_pos maps the 0..1 Rf range to the internal 1.10x Lane Box scale
-        const rel_pos = (0.05 / 1.1) + rf * (1.0 / 1.1);
-        const x = padL + rel_pos * pw;
-        hctx.font = '18px Inter';
-        hctx.fillText(rf.toFixed(1), x, 730);
-        hctx.beginPath(); hctx.moveTo(x, 700); hctx.lineTo(x, 693); hctx.stroke();
-    }
-
-    const laneStripUrl = laneStrip.toDataURL();
-    const chartImgUrl = hiResChart.toDataURL();
-
-    // 3. Integration Table Data
-    const totalArea = (l.peaks || []).reduce((s, p) => s + p.area, 0);
-    const totalCorrArea = (l.peaks || []).reduce((s, p) => s + (p.area / (p.absRatio || 1)), 0);
-    const rows = (l.peaks || []).map((pk, i) => {
-        const corrArea = pk.area / (pk.absRatio || 1);
-        return `
-        <tr>
-            <td>${pk.name || '#'+(i+1)}</td>
-            <td style="text-align:center">${pk.rf.toFixed(3)}</td>
-            <td style="text-align:right">${pk.area.toFixed(1)}</td>
-            <td style="text-align:right; font-weight:700; color:#0366d6">${totalArea > 0 ? ((pk.area/totalArea)*100).toFixed(1) : 0}%</td>
-            <td style="text-align:center">${pk.absRatio || 1}</td>
-            <td style="text-align:right; font-weight:700; color:#e34c26">${totalCorrArea > 0 ? ((corrArea/totalCorrArea)*100).toFixed(1) : 0}%</td>
-        </tr>`;
-    }).join('');
-
-    // Aligned Report Geometry (Exactly PAD_L in our high-res draw was 80)
-    const html = `<html><head><title>AQ-TLC Analytical - ${l.name || l.id}</title><style>
+    let reportHtml = `<html><head><title>AQ-TLC Analytical Report</title><style>
         body { font-family: 'Segoe UI', Arial, sans-serif; padding: 40px; color: #1a1a1a; max-width: 1000px; margin: auto; }
+        .page-break { page-break-after: always; margin-bottom: 60px; }
         .header { display: flex; justify-content: space-between; border-bottom: 3px solid #ffc107; padding-bottom: 15px; margin-bottom: 30px; }
         .stack-wrap { border: 1px solid #ddd; border-radius: 8px; overflow: hidden; box-shadow: 0 4px 15px rgba(0,0,0,0.08); background: #000; padding-bottom: 10px; }
         .lane-strip-area { position: relative; height: 100px; background: #000; overflow: hidden; margin-bottom: -1px; }
         .lane-strip-img { position: absolute; left: ${ (80/1600)*100 }%; width: ${ ( (1600-80-120)/1600 )*100 }%; height: 100%; object-fit: fill; }
         .chart-img { width: 100%; display: block; border-top: 2px solid #ffc107; }
-        table { width: 100%; border-collapse: collapse; margin-top: 30px; font-size: 0.95rem; }
+        table { width: 100%; border-collapse: collapse; margin-top: 30px; font-size: 0.95rem; break-inside: avoid; }
         th, td { border-bottom: 1px solid #eee; padding: 12px 15px; text-align: left; }
         th { background: #f8f9fa; font-weight: 700; color: #555; text-transform: uppercase; font-size: 0.75rem; }
         .badge { background: #ffc107; padding: 2px 10px; border-radius: 12px; font-size: 0.8rem; font-weight: 700; color:#000; }
-    </style></head><body>
-        <div class="header">
-            <div><h1 style="color:#0366d6; margin:0">AQ-TLC Analytical Report <span class="badge">v1.0</span></h1>
-                 <p style="color:#666; margin:5px 0 0 0">Sample: <strong>${l.name || l.id}</strong></p></div>
-            <div style="text-align:right; color:#888; font-size:0.9rem">${new Date().toLocaleString()}</div>
-        </div>
-        <div class="stack-wrap">
-            <h3 style="color:#fff; font-size:0.65rem; padding:8px 15px; margin:0; text-transform:uppercase; letter-spacing:1px">Physical-to-Signal Alignment Stack</h3>
-            <div class="lane-strip-area"><img src="${laneStripUrl}" class="lane-strip-img"></div>
-            <img src="${chartImgUrl}" class="chart-img">
-        </div>
-        <h3 style="margin-top:40px; border-bottom:2px solid #eee; padding-bottom:10px; font-size:0.9rem">QUANTITATIVE INTEGRATION</h3>
-        <table><thead><tr><th>PEAK NAME</th><th style="text-align:center">Rf</th><th style="text-align:right">AREA (AU)</th><th style="text-align:right">% AREA</th><th style="text-align:center">ABS RATIO</th><th style="text-align:right">% CORR. AREA</th></tr></thead><tbody>${rows}</tbody></table>
-        <script>window.onload = () => { setTimeout(() => window.print(), 1000); }</script>
-    </body></html>`;
+        @media print { .page-break:last-child { page-break-after: auto; margin-bottom: 0px; } }
+    </style></head><body>`;
+
+    for (let c = 0; c < lanesToExport.length; c++) {
+        const l = lanesToExport[c];
+        
+        const laneStrip = document.createElement('canvas');
+        const boxHeight = l.h;
+        laneStrip.width = boxHeight; laneStrip.height = l.w; 
+        const sctx = laneStrip.getContext('2d');
+        
+        sctx.save();
+        sctx.translate(boxHeight/2, l.w/2);
+        sctx.rotate(Math.PI/2 - l.angle);
+        sctx.drawImage(img, -l.cx, -l.cy); 
+        sctx.restore();
+
+        const n = (l.profile || []).length;
+        if (n > 1) {
+            (l.peaks || []).forEach(pk => {
+                const lb = pk.lb !== undefined ? pk.lb : Math.max(0, pk.idx - 5);
+                const rb = pk.rb !== undefined ? pk.rb : Math.min(n-1, pk.idx + 5);
+                const x_pos_rb_flipped = (lb/(n-1)) * boxHeight; 
+                const x_pos_lb_flipped = (rb/(n-1)) * boxHeight;
+                sctx.fillStyle = 'rgba(255,215,0,0.35)';
+                sctx.fillRect(x_pos_rb_flipped, 0, x_pos_lb_flipped - x_pos_rb_flipped, l.w);
+                sctx.strokeStyle = 'rgba(255,165,0,0.8)'; sctx.lineWidth = 1;
+                sctx.beginPath(); sctx.moveTo(x_pos_rb_flipped, 0); sctx.lineTo(x_pos_rb_flipped, l.w); sctx.stroke();
+                sctx.beginPath(); sctx.moveTo(x_pos_lb_flipped, 0); sctx.lineTo(x_pos_lb_flipped, l.w); sctx.stroke();
+            });
+        }
+
+        const hiResChart = document.createElement('canvas');
+        hiResChart.width = 1600; hiResChart.height = 800;
+        const hctx = hiResChart.getContext('2d');
+        hctx.fillStyle = '#ffffff'; hctx.fillRect(0,0,1600,800);
+        
+        const p_orig = l.profile || []; 
+        const p = [...p_orig].reverse(); 
+        const padL = 80; const padR = 120; const pw = 1600 - padL - padR;
+        const maxVal = Math.max(...p, 1);
+        if (p.length > 0) {
+            hctx.strokeStyle = '#0366d6'; hctx.lineWidth = 3; hctx.beginPath();
+            p.forEach((v, i) => {
+                const x = padL + (i / (p.length - 1)) * pw;
+                const y = 700 - (v / maxVal) * 600;
+                if (i === 0) hctx.moveTo(x, y); else hctx.lineTo(x, y);
+            });
+            hctx.stroke();
+        }
+
+        hctx.fillStyle = '#000'; hctx.font = 'bold 24px Inter'; hctx.textAlign = 'center';
+        hctx.fillText('Retention Factor (Rf)', 800, 785);
+        for(let i=0; i<=10; i++) {
+            const rf = i/10;
+            const rel_pos = (0.05 / 1.1) + rf * (1.0 / 1.1);
+            const x = padL + rel_pos * pw;
+            hctx.font = '18px Inter';
+            hctx.fillText(rf.toFixed(1), x, 730);
+            hctx.beginPath(); hctx.moveTo(x, 700); hctx.lineTo(x, 693); hctx.stroke();
+        }
+
+        const laneStripUrl = laneStrip.toDataURL();
+        const chartImgUrl = hiResChart.toDataURL();
+
+        const totalArea = (l.peaks || []).reduce((s, pk) => s + pk.area, 0);
+        const totalCorrArea = (l.peaks || []).reduce((s, pk) => s + (pk.area / (pk.absRatio || 1)), 0);
+        const rows = (l.peaks || []).map((pk, i) => {
+            const corrArea = pk.area / (pk.absRatio || 1);
+            return `
+            <tr>
+                <td>${pk.name || '#'+(i+1)}</td>
+                <td style="text-align:center">${pk.rf.toFixed(3)}</td>
+                <td style="text-align:right">${pk.area.toFixed(1)}</td>
+                <td style="text-align:right; font-weight:700; color:#0366d6">${totalArea > 0 ? ((pk.area/totalArea)*100).toFixed(1) : 0}%</td>
+                <td style="text-align:center">${pk.absRatio || 1}</td>
+                <td style="text-align:right; font-weight:700; color:#e34c26">${totalCorrArea > 0 ? ((corrArea/totalCorrArea)*100).toFixed(1) : 0}%</td>
+            </tr>`;
+        }).join('');
+
+        reportHtml += `
+        <div class="page-break">
+            <div class="header">
+                <div><h1 style="color:#0366d6; margin:0">AQ-TLC Analytical Report <span class="badge">v1.0</span></h1>
+                     <p style="color:#666; margin:5px 0 0 0">Sample: <strong>${l.name || l.id}</strong></p></div>
+                <div style="text-align:right; color:#888; font-size:0.9rem">${new Date().toLocaleString()}</div>
+            </div>
+            <div class="stack-wrap">
+                <h3 style="color:#fff; font-size:0.65rem; padding:8px 15px; margin:0; text-transform:uppercase; letter-spacing:1px">Physical-to-Signal Alignment Stack</h3>
+                <div class="lane-strip-area"><img src="${laneStripUrl}" class="lane-strip-img"></div>
+                <img src="${chartImgUrl}" class="chart-img">
+            </div>
+            <h3 style="margin-top:40px; border-bottom:2px solid #eee; padding-bottom:10px; font-size:0.9rem">QUANTITATIVE INTEGRATION</h3>
+            <table><thead><tr><th>PEAK NAME</th><th style="text-align:center">Rf</th><th style="text-align:right">AREA (AU)</th><th style="text-align:right">% AREA</th><th style="text-align:center">ABS RATIO</th><th style="text-align:right">% CORR. AREA</th></tr></thead><tbody>${rows}</tbody></table>
+        </div>`;
+    }
+
+    reportHtml += `<script>window.onload = () => { setTimeout(() => window.print(), 1000); }</script></body></html>`;
+
+    const fileName = isFullReport ? "AQ-TLC_Full_Report.html" : `AQ-TLC_Report_${lanesToExport[0].name || lanesToExport[0].id}.html`;
+
     try {
         const win = window.open('', '_blank');
-        win.document.write(html);
+        win.document.write(reportHtml);
         win.document.close();
     } catch (e) {
         console.warn("Popup document.write blocked by iframe sandbox. Falling back to explicit file download.", e);
-        const blob = new Blob([html], { type: 'text/html' });
+        const blob = new Blob([reportHtml], { type: 'text/html' });
         const url = URL.createObjectURL(blob);
         const a = document.createElement('a');
         a.href = url;
-        a.download = `AQ-TLC_Report_${l.name || l.id}.html`;
+        a.download = fileName;
         document.body.appendChild(a);
         a.click();
         document.body.removeChild(a);
