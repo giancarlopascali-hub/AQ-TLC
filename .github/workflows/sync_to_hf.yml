@@ -14,7 +14,15 @@ jobs:
         with:
           fetch-depth: 0
           lfs: true
-      - name: Push to Hugging Face Hub
+      - name: Build clean deployment branch and push
         env:
           HF_TOKEN: ${{ secrets.HF_TOKEN }}
-        run: git push --force https://realgcp:$HF_TOKEN@huggingface.co/spaces/realgcp/AQ-TLC-Web HEAD:main
+        run: |
+          git checkout --orphan hf-deploy
+          # Remove test image files from the local runner filesystem before staging
+          git rm -rf --cached *.jpg *.png || true
+          rm -f *.jpg *.png || true
+          git config --global user.email "action@github.com"
+          git config --global user.name "GitHub Action"
+          git commit -m "Deploy clean snapshot to HF Space"
+          git push --force https://realgcp:$HF_TOKEN@huggingface.co/spaces/realgcp/AQ-TLC-Web hf-deploy:main
