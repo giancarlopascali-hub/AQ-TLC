@@ -59,21 +59,39 @@
         <li><strong>Understanding Abs Ratio:</strong> Some molecular bands inherently stain differently and saturate visual channels faster than others despite having identical equivalent purity weights. Setting the Abs Ratio acts as a correction factor mathematically. For example, if a band has a known absorptive bias factor of `0.5`, setting `0.5` causes the app to natively divide its absolute integrated Area by `0.5` when determining its proportional `% Corr. Area` impact across the total lane. It homogeneously defaults to `1` (which acts as neutral 1:1 proportionality).</li>
     </ul>
 
-    <h2>4. Exporting High-Quality Reports</h2>
-    <p>When you achieve the integration profile required, use the native printing modules to archive robust, laboratory-grade PDF documentation logs:</p>
+    <h2>4. Integration Modalities</h2>
+    <p>AQ-TLC supports two distinct methods for quantifying your chromatographic results. Toggle between them using the tabs above the peaks table:</p>
     <ul>
-      <li><strong>Export Lane:</strong> Located inside individual pane cards. Clicking this generates a targeted report formatting single-subject integration metadata mapping only that specific lane layout.</li>
-      <li><strong>Full Report:</strong> Rapidly stitches an iterative timeline formatting every active lane currently mounted inside your application into a beautifully segmented, multipage HTML dossier cleanly separating reports into 1 continuous document sequence natively.</li>
+        <li><strong>Relative Intensity (Default):</strong> This mode treats each lane as an independent system. It calculates the percentage of the total integrated area that each peak represents within that specific lane. 
+            <ul>
+                <li><strong>Abs Ratio:</strong> Use this correction factor to account for differences in staining or absorption. Setting it to `0.5` will double the "Corrected Area" relative to other peaks with a ratio of `1`.</li>
+            </ul>
+        </li>
+        <li><strong>Calibration:</strong> This powerful mode allows for absolute quantification using a <strong>Global Calibration Curve</strong> derived from your standards.
+            <ul>
+                <li><strong>Type S (Standard):</strong> Use this for peaks with a precisely known concentration or amount. When selected, you can enter the numerical value in the <strong>Value</strong> column.</li>
+                <li><strong>Type N (Neutral):</strong> The default state. These peaks are integrated but not used for calibration calculations or quantification.</li>
+                <li><strong>Type A (Analyte):</strong> Use this for samples of unknown concentration. The system will automatically calculate and display their value based on the calibration curve.</li>
+                <li><strong>The Curve:</strong> The calibration curve is built using every peak flagged as <strong>S</strong> across <em>all</em> lanes in the image. If 1 standard is provided, a linear-through-origin model is used; with 2 or more, a full linear regression is applied.</li>
+            </ul>
+        </li>
     </ul>
 
-    <h2>5. Workspace Management</h2>
+    <h2>5. Exporting High-Quality Reports</h2>
+    <p>When you achieve the integration profile required, use the native printing modules to archive robust, laboratory-grade PDF documentation logs. Reports automatically adapt to reflect your active integration modality (Relative or Calibration):</p>
+    <ul>
+      <li><strong>Export Lane:</strong> Located inside individual pane cards. Clicking this generates a targeted report for the specific lane currently selected.</li>
+      <li><strong>Full Report:</strong> Rapidly stitches every active lane into a beautifully segmented, multipage document sequence.</li>
+    </ul>
+
+    <h2>6. Workspace Management</h2>
     <p>Two essential buttons manage your state seamlessly:</p>
     <ul>
       <li><strong>New (📂):</strong> A hard reset. Completely purges the loaded image payload and mathematical cache, flushing you backwards directly into the original landing boundary screen requesting a fresh upload.</li>
       <li><strong>Reset (🔄):</strong> A soft reset. Non-destructively purges the mathematical vector data (lines, marks, densitograms) but rigorously retains the native image load, zooming, and rotations applied so you can iterate an alternative tracing without needing to constantly drop external file prompts.</li>
     </ul>
 
-    <h2>6. Practical Laboratory Suggestions & Image Quality</h2>
+    <h2>7. Practical Laboratory Suggestions & Image Quality</h2>
     <p>For the most scientifically reliable detection capability using software chromatography, consider both physical TLC best practices and photographic discipline:</p>
     <ul>
       <li><strong>Optimizing TLC Runs:</strong> Use clean, level solvent chambers and ensure the chamber atmosphere is thoroughly saturated with solvent vapor (using filter paper pads) prior to dropping your plate. This fiercely avoids "smiling" wavefronts where edges unpredictably evaporate quicker and run irregularly, ensuring consistently parallel horizontal Rf bounds uniformly!</li>

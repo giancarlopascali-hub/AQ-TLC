@@ -8,6 +8,7 @@ const state = {
   activeLine: null, activeLane: null, activeMark: null,
   isPanning: false, isRotating: false, rotateStart: 0,
   editingField: null,
+  integrationMethod: 'relative', // 'relative' or 'calibration'
   undoStack: []
 };
 
@@ -151,6 +152,42 @@ async function updateDensitograms(detectPeaks = false) {
   } catch(e) { console.error(e); }
 }
 
+function calculateCalibrationCurve() {
+    const standards = [];
+    state.lanes.forEach(l => {
+        (l.peaks || []).forEach(pk => {
+            if (pk.type === 'S' && pk.calibrationValue !== undefined && !isNaN(pk.calibrationValue)) {
+                standards.push({ area: pk.area, value: pk.calibrationValue });
+            }
+        });
+    });
+
+    if (standards.length === 0) return null;
+    if (standards.length === 1) {
+        // Linear through origin: y = mx => m = y/x
+        const m = standards[0].value / (standards[0].area || 1);
+        return (area) => area * m;
+    }
+
+    // Simple Linear Regression: y = mx + b
+    const n = standards.length;
+    let sumX = 0, sumY = 0, sumXY = 0, sumXX = 0;
+    standards.forEach(s => {
+        sumX += s.area;
+        sumY += s.value;
+        sumXY += s.area * s.value;
+        sumXX += s.area * s.area;
+    });
+
+    const m = (n * sumXY - sumX * sumY) / (n * sumXX - sumX * sumX);
+    const b = (sumY - m * sumX) / n;
+    
+    // If m is NaN it probably means all points are the same area
+    if (isNaN(m)) return (area) => standards[0].value;
+    
+    return (area) => Math.max(0, m * area + b);
+}
+
 function renderProfiles() {
     const list = $('densitogram-list'); if (!list) return;
     list.innerHTML = '';
@@ -173,16 +210,31 @@ function renderProfiles() {
             </div>
         </div>
         <canvas id="chart-active" style="width:100%; height:280px; background:#010409; border:1px solid var(--border); border-radius:8px"></canvas>
+        
         <div class="integration-table-wrap" style="margin-top:20px">
+            <div class="tabs-nav">
+                <button class="tab-btn ${state.integrationMethod === 'relative' ? 'active' : ''}" 
+                        onclick="state.integrationMethod = 'relative'; renderProfiles();">Relative Intensity</button>
+                <button class="tab-btn ${state.integrationMethod === 'calibration' ? 'active' : ''}" 
+                        onclick="state.integrationMethod = 'calibration'; renderProfiles();">Calibration</button>
+            </div>
             <table class="integration-table" style="width:100%">
                 <thead>
                     <tr style="border-bottom:2px solid var(--border)">
-                        <th style="text-align:left">Peak</th>
-                        <th style="text-align:center">Rf</th>
-                        <th style="text-align:right">Area</th>
-                        <th style="text-align:right">%</th>
-                        <th style="text-align:center">Abs Ratio</th>
-                        <th style="text-align:right">% Corr.</th>
+                        ${state.integrationMethod === 'relative' ? `
+                            <th style="text-align:left">Peak</th>
+                            <th style="text-align:center">Rf</th>
+                            <th style="text-align:right">Area</th>
+                            <th style="text-align:right">%</th>
+                            <th style="text-align:center">Abs Ratio</th>
+                            <th style="text-align:right">% Corr.</th>
+                        ` : `
+                            <th style="text-align:left">Peak</th>
+                            <th style="text-align:center">Rf</th>
+                            <th style="text-align:right">Area</th>
+                            <th style="text-align:center">Type</th>
+                            <th style="text-align:right">Value</th>
+                        `}
                     </tr>
                 </thead>
                 <tbody id="peak-table-body"></tbody>
@@ -194,26 +246,69 @@ function renderProfiles() {
     const totalArea = (l.peaks || []).reduce((sum, pk) => sum + pk.area, 0);
     const totalCorrArea = (l.peaks || []).reduce((sum, pk) => sum + (pk.area / (pk.absRatio || 1)), 0);
     const tbody = $('peak-table-body');
+    const calCurve = state.integrationMethod === 'calibration' ? calculateCalibrationCurve() : null;
+
     (l.peaks || []).forEach((pk, i) => {
         const corrArea = pk.area / (pk.absRatio || 1);
         const tr = document.createElement('tr');
         tr.style.borderBottom = '1px solid var(--border)';
-        tr.innerHTML = `
-            <td style="color:${pk.manual ? '#e34c26' : '#ffd700'}; font-weight:600">
-                <input type="text" value="${pk.name || '#'+(i+1)}" 
-                       style="background:transparent; border:none; color:inherit; width:60px"
-                       onchange="state.activeLane.peaks[${i}].name = this.value;">
-            </td>
-            <td style="text-align:center">${pk.rf.toFixed(3)}${pk.manual ? '<span style="color:#e34c26; margin-left:2px">*</span>' : ''}</td>
-            <td style="text-align:right">${pk.area.toLocaleString(undefined, {maximumFractionDigits:1})}</td>
-            <td style="text-align:right; font-weight:700">${totalArea > 0 ? ((pk.area/totalArea)*100).toFixed(1) : 0}%</td>
-            <td style="text-align:center">
-                <input type="number" step="0.1" value="${pk.absRatio || 1}" 
-                       style="background:transparent; border:1px solid rgba(255,255,255,0.2); border-radius:4px; color:#fff; width:60px; text-align:center"
-                       onchange="state.activeLane.peaks[${i}].absRatio = parseFloat(this.value) || 1; renderProfiles();">
-            </td>
-            <td style="text-align:right; font-weight:700; color:#58a6ff">${totalCorrArea > 0 ? ((corrArea/totalCorrArea)*100).toFixed(1) : 0}%</td>
-        `;
+        
+        if (state.integrationMethod === 'relative') {
+            tr.innerHTML = `
+                <td style="color:${pk.manual ? '#e34c26' : '#ffd700'}; font-weight:600">
+                    <input type="text" value="${pk.name || '#'+(i+1)}" 
+                           style="background:transparent; border:none; color:inherit; width:60px"
+                           onchange="state.activeLane.peaks[${i}].name = this.value;">
+                </td>
+                <td style="text-align:center">${pk.rf.toFixed(3)}${pk.manual ? '<span style="color:#e34c26; margin-left:2px">*</span>' : ''}</td>
+                <td style="text-align:right">${pk.area.toLocaleString(undefined, {maximumFractionDigits:1})}</td>
+                <td style="text-align:right; font-weight:700">${totalArea > 0 ? ((pk.area/totalArea)*100).toFixed(1) : 0}%</td>
+                <td style="text-align:center">
+                    <input type="number" step="0.1" value="${pk.absRatio || 1}" 
+                           style="background:transparent; border:1px solid rgba(255,255,255,0.2); border-radius:4px; color:#fff; width:60px; text-align:center"
+                           onchange="state.activeLane.peaks[${i}].absRatio = parseFloat(this.value) || 1; renderProfiles();">
+                </td>
+                <td style="text-align:right; font-weight:700; color:#58a6ff">${totalCorrArea > 0 ? ((corrArea/totalCorrArea)*100).toFixed(1) : 0}%</td>
+            `;
+        } else {
+            // Calibration mode
+            const type = pk.type || 'N';
+            let valueContent = '';
+            if (type === 'S') {
+                valueContent = `
+                    <input type="number" value="${pk.calibrationValue || ''}" placeholder="Enter val"
+                           style="background:transparent; border:1px solid rgba(255,255,255,0.2); border-radius:4px; color:#f0883e; width:80px; text-align:right"
+                           onchange="state.activeLane.peaks[${i}].calibrationValue = parseFloat(this.value); renderProfiles();">
+                `;
+            } else if (type === 'N') {
+                valueContent = `<span style="color:var(--text-dim); font-size:0.7rem">N/A</span>`;
+            } else {
+                // Analyte
+                const calVal = calCurve ? calCurve(pk.area) : null;
+                valueContent = `<span style="color:#238636; font-weight:700">${calVal !== null ? calVal.toFixed(2) : '-'}</span>`;
+            }
+
+            tr.innerHTML = `
+                <td style="color:${pk.manual ? '#e34c26' : '#ffd700'}; font-weight:600">
+                    <input type="text" value="${pk.name || '#'+(i+1)}" 
+                           style="background:transparent; border:none; color:inherit; width:60px"
+                           onchange="state.activeLane.peaks[${i}].name = this.value;">
+                </td>
+                <td style="text-align:center">${pk.rf.toFixed(3)}${pk.manual ? '<span style="color:#e34c26; margin-left:2px">*</span>' : ''}</td>
+                <td style="text-align:right">${pk.area.toLocaleString(undefined, {maximumFractionDigits:1})}</td>
+                <td style="text-align:center">
+                    <div class="type-switch">
+                        <div class="type-option s-type ${type === 'S' ? 'active' : ''}" 
+                             onclick="state.activeLane.peaks[${i}].type = 'S'; renderProfiles();">S</div>
+                        <div class="type-option n-type ${type === 'N' ? 'active' : ''}" 
+                             onclick="state.activeLane.peaks[${i}].type = 'N'; renderProfiles();">N</div>
+                        <div class="type-option a-type ${type === 'A' ? 'active' : ''}" 
+                             onclick="state.activeLane.peaks[${i}].type = 'A'; renderProfiles();">A</div>
+                    </div>
+                </td>
+                <td style="text-align:right">${valueContent}</td>
+            `;
+        }
         tbody.appendChild(tr);
     });
 
@@ -319,7 +414,7 @@ function renderProfiles() {
                 let area = 0;
                 for (let i = v_lb; i < v_rb; i++) area += (p[i] + p[i+1]) / 2 - base;
 
-                l.peaks.push({ idx, rf: idx/(p.length-1), height: val, area: Math.max(0, area), lb: v_lb, rb: v_rb, manual: true });
+                l.peaks.push({ idx, rf: idx/(p.length-1), height: val, area: Math.max(0, area), lb: v_lb, rb: v_rb, manual: true, type: 'N' });
                 l.peaks.sort((a,b)=>a.idx-b.idx); renderProfiles(); render();
             }
         };
@@ -800,18 +895,41 @@ async function exportReport(type = null) {
 
         const totalArea = (l.peaks || []).reduce((s, pk) => s + pk.area, 0);
         const totalCorrArea = (l.peaks || []).reduce((s, pk) => s + (pk.area / (pk.absRatio || 1)), 0);
+        const calCurve = state.integrationMethod === 'calibration' ? calculateCalibrationCurve() : null;
+
         const rows = (l.peaks || []).map((pk, i) => {
             const corrArea = pk.area / (pk.absRatio || 1);
-            return `
-            <tr>
-                <td style="color:${pk.manual ? '#e34c26' : 'inherit'}; font-weight:${pk.manual?'600':'normal'}">${pk.name || '#'+(i+1)}</td>
-                <td style="text-align:center">${pk.rf.toFixed(3)}${pk.manual ? '<span style="color:#e34c26; margin-left:2px">*</span>' : ''}</td>
-                <td style="text-align:right">${pk.area.toFixed(1)}</td>
-                <td style="text-align:right; font-weight:700; color:#0366d6">${totalArea > 0 ? ((pk.area/totalArea)*100).toFixed(1) : 0}%</td>
-                <td style="text-align:center">${pk.absRatio || 1}</td>
-                <td style="text-align:right; font-weight:700; color:#e34c26">${totalCorrArea > 0 ? ((corrArea/totalCorrArea)*100).toFixed(1) : 0}%</td>
-            </tr>`;
+            if (state.integrationMethod === 'relative') {
+                return `
+                <tr>
+                    <td style="color:${pk.manual ? '#e34c26' : 'inherit'}; font-weight:${pk.manual?'600':'normal'}">${pk.name || '#'+(i+1)}</td>
+                    <td style="text-align:center">${pk.rf.toFixed(3)}${pk.manual ? '<span style="color:#e34c26; margin-left:2px">*</span>' : ''}</td>
+                    <td style="text-align:right">${pk.area.toFixed(1)}</td>
+                    <td style="text-align:right; font-weight:700; color:#0366d6">${totalArea > 0 ? ((pk.area/totalArea)*100).toFixed(1) : 0}%</td>
+                    <td style="text-align:center">${pk.absRatio || 1}</td>
+                    <td style="text-align:right; font-weight:700; color:#e34c26">${totalCorrArea > 0 ? ((corrArea/totalCorrArea)*100).toFixed(1) : 0}%</td>
+                </tr>`;
+            } else {
+                const type = pk.type || 'N';
+                let valStr = '-';
+                if (type === 'S') valStr = (pk.calibrationValue !== undefined) ? pk.calibrationValue.toString() : 'N/A';
+                else if (type === 'N') valStr = 'N/A';
+                else if (type === 'A') valStr = calCurve ? calCurve(pk.area).toFixed(2) : '-';
+
+                return `
+                <tr>
+                    <td style="color:${pk.manual ? '#e34c26' : 'inherit'}; font-weight:${pk.manual?'600':'normal'}">${pk.name || '#'+(i+1)}</td>
+                    <td style="text-align:center">${pk.rf.toFixed(3)}${pk.manual ? '<span style="color:#e34c26; margin-left:2px">*</span>' : ''}</td>
+                    <td style="text-align:right">${pk.area.toFixed(1)}</td>
+                    <td style="text-align:center; font-weight:700">${type}</td>
+                    <td style="text-align:right; font-weight:700; color:#238636">${valStr}</td>
+                </tr>`;
+            }
         }).join('');
+
+        const tableHeaders = state.integrationMethod === 'relative' 
+            ? `<tr><th>PEAK NAME</th><th style="text-align:center">Rf</th><th style="text-align:right">AREA (AU)</th><th style="text-align:right">% AREA</th><th style="text-align:center">ABS RATIO</th><th style="text-align:right">% CORR. AREA</th></tr>`
+            : `<tr><th>PEAK NAME</th><th style="text-align:center">Rf</th><th style="text-align:right">AREA (AU)</th><th style="text-align:center">TYPE</th><th style="text-align:right">VALUE</th></tr>`;
 
         reportHtml += `
         <div class="page-break">
@@ -825,8 +943,8 @@ async function exportReport(type = null) {
                 <div class="lane-strip-area"><img src="${laneStripUrl}" class="lane-strip-img"></div>
                 <img src="${chartImgUrl}" class="chart-img">
             </div>
-            <h3 style="margin-top:40px; border-bottom:2px solid #eee; padding-bottom:10px; font-size:0.9rem">QUANTITATIVE INTEGRATION</h3>
-            <table><thead><tr><th>PEAK NAME</th><th style="text-align:center">Rf</th><th style="text-align:right">AREA (AU)</th><th style="text-align:right">% AREA</th><th style="text-align:center">ABS RATIO</th><th style="text-align:right">% CORR. AREA</th></tr></thead><tbody>${rows}</tbody></table>
+            <h3 style="margin-top:40px; border-bottom:2px solid #eee; padding-bottom:10px; font-size:0.9rem">QUANTITATIVE INTEGRATION (${state.integrationMethod.toUpperCase()})</h3>
+            <table><thead>${tableHeaders}</thead><tbody>${rows}</tbody></table>
         </div>`;
     }
 
