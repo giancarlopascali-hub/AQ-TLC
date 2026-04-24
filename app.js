@@ -9,7 +9,9 @@ const state = {
   isPanning: false, isRotating: false, rotateStart: 0,
   editingField: null,
   integrationMethod: 'relative', // 'relative' or 'calibration'
-  undoStack: []
+  undoStack: [],
+  chartView: { zoom: 1, offset: 0 },
+  polarityMode: 'default'
 };
 
 const $ = id => document.getElementById(id);
@@ -133,7 +135,8 @@ async function updateDensitograms(detectPeaks = false) {
         peak_prominence: prominence, 
         peak_distance: distance, 
         peak_threshold: parseFloat($('peak-threshold')?.value || 50),
-        smooth_sigma: 1.5
+        smooth_sigma: 1.5,
+        polarity_mode: state.polarityMode
       })
     });
     const data = await res.json();
@@ -188,6 +191,13 @@ function calculateCalibrationCurve() {
     return (area) => Math.max(0, m * area + b);
 }
 
+function calculateRf(idx, n) {
+    const y_fract = 1.0 - (idx / (n - 1));
+    const y_origin_line = 1.05 / 1.10;
+    const y_front_line  = 0.05 / 1.10;
+    return (y_origin_line - y_fract) / (y_origin_line - y_front_line);
+}
+
 function renderProfiles() {
     const list = $('densitogram-list'); if (!list) return;
     list.innerHTML = '';
@@ -200,7 +210,7 @@ function renderProfiles() {
     const l = state.activeLane;
     const item = document.createElement('div');
     item.innerHTML = `
-        <div style="margin-bottom:15px; display:flex; justify-content:space-between; align-items:center">
+        <div style="margin-bottom:10px; display:flex; justify-content:space-between; align-items:center">
             <input type="text" class="lane-name-edit" value="${l.name || 'Lane '+l.id}" 
                    style="background:transparent; border:none; color:white; font-family:Outfit; font-size:1.2rem; font-weight:700; width:150px"
                    onchange="state.lanes.find(ln=>ln.id=='${l.id}').name = this.value; render();">
@@ -209,7 +219,17 @@ function renderProfiles() {
                 <button class="action-btn primary" onclick="exportReport('all')" style="font-size:0.75rem; padding:4px 10px" title="Export all detected lanes into a multi-page report">📚 Full Report</button>
             </div>
         </div>
-        <canvas id="chart-active" style="width:100%; height:280px; background:#010409; border:1px solid var(--border); border-radius:8px"></canvas>
+        
+        <div style="margin-bottom:10px; display:flex; gap:6px; flex-wrap: wrap;">
+            <button class="action-btn secondary" style="font-size:0.65rem; padding:3px 8px" 
+                    onclick="saveState(); state.activeLane.peaks = []; renderProfiles(); render();">🗑️ Delete all peaks</button>
+            <button class="action-btn secondary" style="font-size:0.65rem; padding:3px 8px" 
+                    onclick="updateDensitograms(true);">🔄 Reset integration</button>
+            <button class="action-btn secondary" style="font-size:0.65rem; padding:3px 8px" 
+                    onclick="state.chartView.zoom = 1; state.chartView.offset = 0; renderProfiles();">🔍 Reset view</button>
+        </div>
+
+        <canvas id="chart-active" style="width:100%; height:280px; background:#010409; border:1px solid var(--border); border-radius:8px; cursor:crosshair"></canvas>
         
         <div class="integration-table-wrap" style="margin-top:20px">
             <div class="tabs-nav">
@@ -323,9 +343,11 @@ function renderProfiles() {
         const PAD_L = 50, PAD_R = 50, PAD_T = 30, PAD_B = 40;
         const plotW = cv.width - PAD_L - PAD_R;
         const plotH = cv.height - PAD_T - PAD_B;
-        
+
+        const z = state.chartView.zoom;
+        const off = state.chartView.offset;
         const pts = p.map((val, i) => ({ 
-            x: PAD_L + (i/(p.length-1)) * plotW, 
+            x: PAD_L + ((i/(p.length-1)) * z + off) * plotW, 
             y: PAD_T + (1 - (val-minV)/range) * plotH 
         }));
 
@@ -336,22 +358,22 @@ function renderProfiles() {
             ctx.beginPath(); ctx.moveTo(PAD_L, gy); ctx.lineTo(cv.width-PAD_R, gy); ctx.stroke();
         }
 
+        ctx.save();
+        ctx.beginPath();
+        ctx.rect(PAD_L, PAD_T, plotW, plotH);
+        ctx.clip();
+
         // Fill & Line
         ctx.beginPath(); ctx.moveTo(pts[0].x, PAD_T+plotH); pts.forEach(pt => ctx.lineTo(pt.x, pt.y)); ctx.lineTo(pts[pts.length-1].x, PAD_T+plotH); ctx.closePath();
         ctx.fillStyle = 'rgba(31, 111, 235, 0.15)'; ctx.fill();
         ctx.beginPath(); ctx.strokeStyle = '#58a6ff'; ctx.lineWidth = 2.5; pts.forEach((pt,i) => i===0?ctx.moveTo(pt.x,pt.y):ctx.lineTo(pt.x,pt.y)); ctx.stroke();
 
-        // Labels
-        ctx.font = 'bold 11px Inter'; ctx.textAlign = 'center'; ctx.fillStyle = '#8b949e';
-        ctx.fillText('ORIGIN (0.0)', PAD_L, cv.height - 15);
-        ctx.fillText('FRONT (1.0)', cv.width - PAD_R, cv.height - 15);
-
         // Peaks
         (l.peaks || []).forEach(pk => {
-            const px = PAD_L + (pk.idx/(p.length-1)) * plotW; 
+            const px = PAD_L + ((pk.idx/(p.length-1)) * z + off) * plotW; 
             const py = PAD_T + (1-(pk.height-minV)/range)*plotH;
-            const lb_x = PAD_L + (pk.lb/(p.length-1)) * plotW;
-            const rb_x = PAD_L + (pk.rb/(p.length-1)) * plotW;
+            const lb_x = PAD_L + ((pk.lb/(p.length-1)) * z + off) * plotW;
+            const rb_x = PAD_L + ((pk.rb/(p.length-1)) * z + off) * plotW;
             
             const color = pk.manual ? '#e34c26' : '#ffd700';
             const rgbaFill = pk.manual ? 'rgba(227, 76, 38, 0.2)' : 'rgba(255, 215, 0, 0.2)';
@@ -370,23 +392,46 @@ function renderProfiles() {
             // Draw Apex
             ctx.setLineDash([5,3]); ctx.strokeStyle=rgbaLine; ctx.beginPath(); ctx.moveTo(px,py); ctx.lineTo(px,PAD_T+plotH); ctx.stroke();
             ctx.setLineDash([]); ctx.fillStyle=color; ctx.beginPath(); ctx.arc(px,py,4,0,Math.PI*2); ctx.fill();
-            ctx.font='bold 10px Roboto Mono'; ctx.fillStyle=color; ctx.fillText((pk.manual?'*':'')+pk.rf.toFixed(2), px, py-12);
+            ctx.font='bold 10px Roboto Mono'; ctx.fillStyle=color; ctx.textAlign='center'; ctx.fillText((pk.manual?'*':'')+pk.rf.toFixed(2), px, py-12);
         });
+        ctx.restore();
+
+        // Labels
+        ctx.font = 'bold 11px Inter'; ctx.textAlign = 'center'; ctx.fillStyle = '#8b949e';
+        ctx.fillText('ORIGIN (0.0)', PAD_L, cv.height - 15);
+        ctx.fillText('FRONT (1.0)', cv.width - PAD_R, cv.height - 15);
+
+        // Horizontal Zoom via Mouse Wheel
+        cv.onwheel = e => {
+            e.preventDefault();
+            const mrect = cv.getBoundingClientRect();
+            const mx = e.clientX - mrect.left;
+            if (mx < PAD_L || mx > cv.width - PAD_R) return;
+
+            const d = e.deltaY > 0 ? 0.9 : 1.1;
+            const oldZ = state.chartView.zoom;
+            const newZ = Math.min(50, Math.max(1, oldZ * d));
+            const f = (mx - PAD_L) / plotW;
+            state.chartView.offset = f - (f - state.chartView.offset) * (newZ / oldZ);
+            state.chartView.zoom = newZ;
+            if (state.chartView.zoom === 1) state.chartView.offset = 0;
+            renderProfiles();
+        };
 
         // peak interactions (automatically active)
         cv.onmousedown = me => {
             const mrect = cv.getBoundingClientRect();
             const mx = me.clientX - mrect.left; const my = me.clientY - mrect.top;
-            let idx = Math.round((mx - PAD_L) / plotW * (p.length - 1));
+            let idx = Math.round((((mx - PAD_L) / plotW) - off) / z * (p.length - 1));
             idx = Math.max(0, Math.min(p.length-1, idx));
             
             let hitBound = null;
             let hitApex = null;
             for (let pk of (l.peaks || [])) {
-                const px = PAD_L + (pk.idx/(p.length-1)) * plotW;
-                const lb_x = PAD_L + (pk.lb/(p.length-1)) * plotW;
-                const rb_x = PAD_L + (pk.rb/(p.length-1)) * plotW;
-                if (Math.abs(mx - px) < 20) hitApex = pk; // APEX takes physical grip priority with a wider radius
+                const px = PAD_L + ((pk.idx/(p.length-1)) * z + off) * plotW;
+                const lb_x = PAD_L + ((pk.lb/(p.length-1)) * z + off) * plotW;
+                const rb_x = PAD_L + ((pk.rb/(p.length-1)) * z + off) * plotW;
+                if (Math.abs(mx - px) < 20) hitApex = pk;
                 else if (Math.abs(mx - lb_x) < 10) hitBound = {pk, type: 'lb'};
                 else if (Math.abs(mx - rb_x) < 10) hitBound = {pk, type: 'rb'};
             }
@@ -400,13 +445,16 @@ function renderProfiles() {
                 saveState();
                 state.isDraggingBound = hitBound;
             } else { // Single Click for new peak
+                const rf = calculateRf(idx, p.length);
+                if (rf < 0 || rf > 1) return; // Force limit
+
                 saveState();
                 const val = p[idx];
                 let lb=idx, rb=idx;
                 while(lb > 0 && p[lb-1] <= p[lb]) lb--;
                 while(rb < p.length-1 && p[rb+1] <= p[rb]) rb++;
                 const base = Math.min(p[lb], p[rb]);
-                const thresh = base + (val - base) * 0.50;
+                const thresh = base + (val - base) * (parseFloat($('peak-threshold')?.value || 50) / 100);
                 let v_lb = lb, v_rb = rb;
                 for(let j=idx; j>lb; j--) if(p[j] < thresh) { v_lb = j; break; }
                 for(let j=idx; j<rb; j++) if(p[j] < thresh) { v_rb = j; break; }
@@ -414,7 +462,7 @@ function renderProfiles() {
                 let area = 0;
                 for (let i = v_lb; i < v_rb; i++) area += (p[i] + p[i+1]) / 2 - base;
 
-                l.peaks.push({ idx, rf: idx/(p.length-1), height: val, area: Math.max(0, area), lb: v_lb, rb: v_rb, manual: true, type: 'N' });
+                l.peaks.push({ idx, rf, height: val, area: Math.max(0, area), lb: v_lb, rb: v_rb, manual: true, type: 'N' });
                 l.peaks.sort((a,b)=>a.idx-b.idx); renderProfiles(); render();
             }
         };
@@ -422,16 +470,16 @@ function renderProfiles() {
         cv.onmousemove = me => {
             const mrect = cv.getBoundingClientRect();
             const mx = me.clientX - mrect.left;
-            let idx = Math.round((mx - PAD_L) / plotW * (p.length - 1));
+            let idx = Math.round((((mx - PAD_L) / plotW) - off) / z * (p.length - 1));
             idx = Math.max(0, Math.min(p.length-1, idx));
             
             // Handle hover cursors dynamically
             if (!state.isDraggingBound && !state.isDraggingPeak) {
-                let hoverType = 'default';
+                let hoverType = 'crosshair';
                 for (let pk of (l.peaks || [])) {
-                    const px = PAD_L + (pk.idx/(p.length-1)) * plotW;
-                    const lb_x = PAD_L + (pk.lb/(p.length-1)) * plotW;
-                    const rb_x = PAD_L + (pk.rb/(p.length-1)) * plotW;
+                    const px = PAD_L + ((pk.idx/(p.length-1)) * z + off) * plotW;
+                    const lb_x = PAD_L + ((pk.lb/(p.length-1)) * z + off) * plotW;
+                    const rb_x = PAD_L + ((pk.rb/(p.length-1)) * z + off) * plotW;
                     if (Math.abs(mx - lb_x) < 8 || Math.abs(mx - rb_x) < 8) hoverType = 'col-resize';
                     else if (Math.abs(mx - px) < 10) hoverType = 'pointer';
                 }
@@ -452,13 +500,17 @@ function renderProfiles() {
             }
 
             if (!state.isDraggingPeak) return;
-            const pk = state.isDraggingPeak; pk.idx = idx; pk.rf = idx/(p.length-1); pk.height = p[idx]; pk.manual = true;
+            const pk = state.isDraggingPeak; 
+            const rf = calculateRf(idx, p.length);
+            if (rf < 0 || rf > 1) return; // Prevent dragging out of limits
+
+            pk.idx = idx; pk.rf = rf; pk.height = p[idx]; pk.manual = true;
             
             // Recalculate local bases for live "Gold Band" feedback
             let lb=idx, rb=idx;
             while(lb > 0 && p[lb-1] <= p[lb]) lb--;
             while(rb < p.length-1 && p[rb+1] <= p[rb]) rb++;
-            const base = Math.min(p[lb], p[rb]); const thresh = base + (p[idx]-base)*0.5;
+            const base = Math.min(p[lb], p[rb]); const thresh = base + (p[idx]-base)*(parseFloat($('peak-threshold')?.value || 50) / 100);
             let v_lb = lb, v_rb = rb;
             for(let j=idx; j>lb; j--) if(p[j] < thresh) { v_lb = j; break; }
             for(let j=idx; j<rb; j++) if(p[j] < thresh) { v_rb = j; break; }
@@ -471,7 +523,7 @@ function renderProfiles() {
 
             renderProfiles(); render();
         };
-        cv.onmouseup = () => { state.isDraggingPeak = null; state.isDraggingBound = null; cv.style.cursor='default'; };
+        cv.onmouseup = () => { state.isDraggingPeak = null; state.isDraggingBound = null; };
         cv.oncontextmenu = e => e.preventDefault();
     }, 0);
 }
@@ -531,11 +583,16 @@ $('canvas-main').onmousedown = e => {
         const d_best = Math.sqrt((p.x-p_best.cx)**2 + (p.y-p_best.cy)**2);
         return d_curr < d_best ? curr : p_best;
     }) : null;
+    
+    let targetX = p.x, targetY = p.y;
     if (o && Math.abs(p.y - o.cy) < 150) { // Snaps only if somewhat close vertically
         const dx = p.x-o.cx, dy = p.y-o.cy; const cosA = Math.cos(o.angle), sinA = Math.sin(o.angle); 
         const dist = dx*cosA+dy*sinA; 
-        state.spottingMarks.push({ x: o.cx+dist*cosA, y: o.cy+dist*sinA }); 
-    } else state.spottingMarks.push({ x: p.x, y: p.y });
+        targetX = o.cx+dist*cosA; targetY = o.cy+dist*sinA;
+    }
+
+    // Sample intensity logic removed per user request
+    state.spottingMarks.push({ x: targetX, y: targetY });
   } else if (state.activeTool === 'rotate_img') { saveState(); state.isRotating = true; state.rotateStart = state.imageRotation; }
   
   render();
@@ -769,6 +826,15 @@ function init() {
     render();
   };
 
+  document.querySelectorAll('.mode-toggle-btn').forEach(btn => {
+    btn.onclick = () => {
+      document.querySelectorAll('.mode-toggle-btn').forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+      state.polarityMode = btn.dataset.mode;
+      if (state.activeLane) updateDensitograms(true);
+    };
+  });
+
   $('peak-prominence').oninput = e => {
       $('peak-prominence-val').textContent = e.target.value;
       if (state.activeLane) updateDensitograms(true);
@@ -792,9 +858,18 @@ function init() {
   
   // Set default tool
   document.querySelector('[data-tool="pan"]').classList.add('active');
+
+  $('btn-restore-defaults').onclick = () => {
+    $('peak-prominence').value = 40;
+    $('peak-prominence-val').textContent = 40;
+    $('peak-distance').value = 8;
+    $('peak-distance-val').textContent = 8;
+    $('peak-threshold').value = 50;
+    $('peak-threshold-val').textContent = 50;
+    if (state.activeLane) updateDensitograms(true);
+  };
+
   render();
-
-
 }
 
 const $$ = s => document.querySelectorAll(s);

@@ -467,10 +467,13 @@ def generate_profiles():
         peak_distance   = int(data.get('peak_distance', 5))
         smooth_sigma    = float(data.get('smooth_sigma', 1.5))
         int_threshold   = float(data.get('peak_threshold', 50)) / 100.0
+        polarity_mode   = data.get('polarity_mode', 'default')
 
         results = []
         for lane in lanes:
             cx, cy, lw, lh, angle = lane['cx'], lane['cy'], lane['w'], lane['h'], lane.get('angle', 0)
+            mark_intensity = lane.get('markIntensity')
+            
             M = cv2.getRotationMatrix2D((cx, cy), np.degrees(-angle), 1.0)
             straight = cv2.warpAffine(img, M, (img.shape[1], img.shape[0]))
             y1, y2 = max(0, int(cy - lh/2)), min(straight.shape[0], int(cy + lh/2))
@@ -485,17 +488,30 @@ def generate_profiles():
             # Density profile (1D)
             raw_signal = np.mean(roi_gray, axis=1)
             
-            # Robust auto-polarity: Mean vs Median Skewness
-            # Quenching: Mostly light pixels (BG) with dark tails (Spots) -> Mean < Median
-            # Fluorescence: Mostly dark pixels (BG) with light tails (Spots) -> Mean > Median
-            if np.mean(roi_gray) < np.median(roi_gray):
-                # Quenching: spots are DARKER than the dominant background
+            # --- Polarity Logic ---
+            if polarity_mode == 'dark':
+                # Force Dark Spots (Quenching)
                 profile = 255.0 - raw_signal
-            else:
-                # Fluorescence: spots are LIGHTER than the dominant background
+            elif polarity_mode == 'bright':
+                # Force Bright Spots (Fluorescence)
                 profile = raw_signal
+            else:
+                # Default Logic: Mean vs Median Skewness
+                if np.mean(roi_gray) < np.median(roi_gray):
+                    profile = 255.0 - raw_signal
+                else:
+                    profile = raw_signal
             
-            # Remove minimum to anchor baseline at 0
+            # --- Advanced Baseline Subtraction (Rolling Median) ---
+            from scipy.ndimage import median_filter
+            # 1. Estimate background via large median filter
+            # Using a very large window (50% of lane height) to ensure wide/saturated peaks are preserved
+            win = max(21, int(len(profile) * 0.50))
+            if win % 2 == 0: win += 1
+            background = median_filter(profile, size=win)
+            profile = np.clip(profile - background, 0, None)
+
+            # Final anchor at 0
             profile = profile - profile.min()
 
             # Smoothing
@@ -540,7 +556,8 @@ def generate_profiles():
                     y_origin_line = 1.05 / 1.10
                     y_front_line  = 0.05 / 1.10
                     rf = (y_origin_line - y_fract) / (y_origin_line - y_front_line)
-                    rf = max(0.0, min(1.0, rf)) # Clamp to valid range
+                    if rf < 0.0 or rf > 1.0:
+                        continue
                     lb, rb = int(properties['left_bases'][i]), int(properties['right_bases'][i])
                     
                     # ── FWHM Visual Banding (v1 chromatography style) ──

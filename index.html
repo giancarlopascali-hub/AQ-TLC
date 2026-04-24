@@ -59,6 +59,15 @@
               <button class="tool-btn small" data-tool="spotting" title="Marks" style="padding:2px">📍</button>
             </div>
             <button class="action-btn primary small" id="btn-calc-lanes" style="margin-top:4px; font-size:0.7rem; padding:4px; width:100%">📡 Find Lanes</button>
+            
+            <div class="polarity-switch-wrap" style="margin-top:8px; display:flex; flex-direction:column; gap:4px">
+              <div class="sidebar-title" style="margin:0; font-size:0.6rem; color:var(--text-dim)">POLARITY MODE</div>
+              <div class="mode-toggle-group">
+                <button class="mode-toggle-btn active" data-mode="default" id="mode-default">Default</button>
+                <button class="mode-toggle-btn" data-mode="dark" id="mode-dark">Dark Spots</button>
+                <button class="mode-toggle-btn" data-mode="bright" id="mode-bright">Bright Spots</button>
+              </div>
+            </div>
           </div>
 
           <div class="sidebar-section" id="peak-params-section" style="padding:4px 10px; border-bottom:1px solid rgba(255,255,255,0.05)">
@@ -75,6 +84,7 @@
               <div class="slider-header" style="font-size:0.7rem"><label>Width %</label><span id="peak-threshold-val">50</span></div>
               <input type="range" id="peak-threshold" min="5" max="95" value="50" style="height:12px">
             </div>
+            <button class="action-btn secondary small" id="btn-restore-defaults" style="margin-top:8px; font-size:0.65rem; padding:2px; width:100%">Restore Defaults</button>
           </div>
 
 

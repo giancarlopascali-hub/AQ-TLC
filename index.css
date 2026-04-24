@@ -17,8 +17,8 @@ body {
   font-family: 'Inter', sans-serif; 
   background: var(--bg); 
   color: var(--text); 
-  height: 100vh; 
-  overflow: hidden; 
+  min-height: 100vh; 
+  overflow: auto; 
 }
 
 /* Landing Page */
@@ -221,3 +221,30 @@ canvas { display: block; }
 .type-option.active.s-type { background: #f0883e; } /* Standard */
 .type-option.active.n-type { background: #6e7681; } /* Neutral */
 .type-option.active.a-type { background: #238636; } /* Analyte */
+
+/* Polarity Mode Toggle */
+.mode-toggle-group {
+  display: flex;
+  background: var(--secondary);
+  border-radius: 6px;
+  overflow: hidden;
+  border: 1px solid var(--border);
+}
+.mode-toggle-btn {
+  flex: 1;
+  padding: 4px 2px;
+  background: transparent;
+  border: none;
+  border-right: 1px solid var(--border);
+  color: var(--text-dim);
+  font-size: 0.65rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+.mode-toggle-btn:last-child { border-right: none; }
+.mode-toggle-btn:hover { background: var(--hover); color: var(--text); }
+.mode-toggle-btn.active {
+  background: var(--accent);
+  color: #fff;
+}
