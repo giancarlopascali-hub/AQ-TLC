@@ -194,6 +194,50 @@ function calculateCalibrationCurve() {
     return (area) => Math.max(0, m * area + b);
 }
 
+function calculateMWCalibrationCurve() {
+    const standards = [];
+    state.lanes.forEach(l => {
+        (l.peaks || []).forEach(pk => {
+            if (pk.type === 'S' && pk.mwValue > 0) {
+                standards.push({ x: pk.rf, y: Math.log10(pk.mwValue) });
+            }
+        });
+    });
+
+    if (standards.length === 0) return null;
+    
+    // Sort by Rf (x)
+    standards.sort((a, b) => a.x - b.x);
+
+    if (standards.length < 2) return null;
+
+    return (rf) => {
+        let i = 0;
+        // Find segment
+        if (rf <= standards[0].x) {
+            // Extrapolate below
+            const s0 = standards[0], s1 = standards[1];
+            const m = (s1.y - s0.y) / (s1.x - s0.x);
+            return Math.pow(10, s0.y + m * (rf - s0.x));
+        }
+        if (rf >= standards[standards.length - 1].x) {
+            // Extrapolate above
+            const sN_1 = standards[standards.length - 2], sN = standards[standards.length - 1];
+            const m = (sN.y - sN_1.y) / (sN.x - sN_1.x);
+            return Math.pow(10, sN.y + m * (rf - sN.x));
+        }
+        // Interpolate between
+        for (i = 0; i < standards.length - 1; i++) {
+            if (rf >= standards[i].x && rf <= standards[i+1].x) {
+                const s0 = standards[i], s1 = standards[i+1];
+                const m = (s1.y - s0.y) / (s1.x - s0.x);
+                return Math.pow(10, s0.y + m * (rf - s0.x));
+            }
+        }
+        return null;
+    };
+}
+
 function calculateRf(idx, n) {
     const y_fract = 1.0 - (idx / (n - 1));
     const y_origin_line = 1.05 / 1.10;
@@ -240,23 +284,30 @@ function renderProfiles() {
                         onclick="state.integrationMethod = 'relative'; renderProfiles();">Relative Intensity</button>
                 <button class="tab-btn ${state.integrationMethod === 'calibration' ? 'active' : ''}" 
                         onclick="state.integrationMethod = 'calibration'; renderProfiles();">Area Calibration</button>
+                <button class="tab-btn ${state.integrationMethod === 'mw_calibration' ? 'active' : ''}" 
+                        onclick="state.integrationMethod = 'mw_calibration'; renderProfiles();">MW Calibration</button>
             </div>
             <table class="integration-table" style="width:100%">
                 <thead>
                     <tr style="border-bottom:2px solid var(--border)">
-                        ${state.integrationMethod === 'relative' ? `
+                        ${state.integrationMethod === 'mw_calibration' ? `
+                            <th style="text-align:left">Peak</th>
+                            <th style="text-align:center">Rf</th>
+                            <th style="text-align:center">Type</th>
+                            <th style="text-align:right">MW (kDa)</th>
+                        ` : state.integrationMethod === 'calibration' ? `
+                            <th style="text-align:left">Peak</th>
+                            <th style="text-align:center">Rf</th>
+                            <th style="text-align:right">Area</th>
+                            <th style="text-align:center">Type</th>
+                            <th style="text-align:right">Value</th>
+                        ` : `
                             <th style="text-align:left">Peak</th>
                             <th style="text-align:center">Rf</th>
                             <th style="text-align:right">Area</th>
                             <th style="text-align:right">%</th>
                             <th style="text-align:center">Abs Ratio</th>
                             <th style="text-align:right">% Corr.</th>
-                        ` : `
-                            <th style="text-align:left">Peak</th>
-                            <th style="text-align:center">Rf</th>
-                            <th style="text-align:right">Area</th>
-                            <th style="text-align:center">Type</th>
-                            <th style="text-align:right">Value</th>
                         `}
                     </tr>
                 </thead>
@@ -277,7 +328,23 @@ function renderProfiles() {
         tr.style.borderBottom = '1px solid var(--border)';
         if (pk.manual) tr.style.background = 'rgba(227, 76, 38, 0.15)';
         
-        if (state.integrationMethod === 'relative') {
+        if (state.integrationMethod === 'mw_calibration') {
+            const mwCurve = calculateMWCalibrationCurve();
+            const type = pk.type || 'N';
+            let mwContent = '';
+            if (type === 'S') {
+                mwContent = `
+                    <input type="number" value="${pk.mwValue || ''}" placeholder="MW"
+                           style="background:transparent; border:1px solid rgba(255,255,255,0.2); border-radius:4px; color:#58a6ff; width:80px; text-align:right"
+                           onchange="state.activeLane.peaks[${i}].mwValue = parseFloat(this.value); renderProfiles();">
+                `;
+            } else if (type === 'N') {
+                mwContent = `<span style="color:var(--text-dim); font-size:0.7rem">N/A</span>`;
+            } else {
+                const mwVal = mwCurve ? mwCurve(pk.rf) : null;
+                mwContent = `<span style="color:#58a6ff; font-weight:700">${mwVal !== null ? mwVal.toFixed(1) : '<span style="font-size:0.6rem; opacity:0.6">Need 2+ S</span>'}</span>`;
+            }
+
             tr.innerHTML = `
                 <td style="color:${pk.manual ? '#e34c26' : '#ffd700'}; font-weight:600">
                     <input type="text" value="${pk.name || '#'+(i+1)}" 
@@ -285,17 +352,20 @@ function renderProfiles() {
                            onchange="state.activeLane.peaks[${i}].name = this.value;">
                 </td>
                 <td style="text-align:center">${pk.rf.toFixed(3)}${pk.manual ? '<span style="color:#e34c26; margin-left:2px">*</span>' : ''}</td>
-                <td style="text-align:right">${pk.area.toLocaleString(undefined, {maximumFractionDigits:1})}</td>
-                <td style="text-align:right; font-weight:700">${totalArea > 0 ? ((pk.area/totalArea)*100).toFixed(1) : 0}%</td>
                 <td style="text-align:center">
-                    <input type="number" step="0.1" value="${pk.absRatio || 1}" 
-                           style="background:transparent; border:1px solid rgba(255,255,255,0.2); border-radius:4px; color:#fff; width:60px; text-align:center"
-                           onchange="state.activeLane.peaks[${i}].absRatio = parseFloat(this.value) || 1; renderProfiles();">
+                    <div class="type-switch">
+                        <div class="type-option s-type ${type === 'S' ? 'active' : ''}" 
+                             onclick="state.activeLane.peaks[${i}].type = 'S'; renderProfiles();">S</div>
+                        <div class="type-option n-type ${type === 'N' ? 'active' : ''}" 
+                             onclick="state.activeLane.peaks[${i}].type = 'N'; renderProfiles();">N</div>
+                        <div class="type-option a-type ${type === 'A' ? 'active' : ''}" 
+                             onclick="state.activeLane.peaks[${i}].type = 'A'; renderProfiles();">A</div>
+                    </div>
                 </td>
-                <td style="text-align:right; font-weight:700; color:#58a6ff">${totalCorrArea > 0 ? ((corrArea/totalCorrArea)*100).toFixed(1) : 0}%</td>
+                <td style="text-align:right">${mwContent}</td>
             `;
-        } else {
-            // Calibration mode
+        } else if (state.integrationMethod === 'calibration') {
+            const calCurve = calculateCalibrationCurve();
             const type = pk.type || 'N';
             let valueContent = '';
             if (type === 'S') {
@@ -331,6 +401,23 @@ function renderProfiles() {
                     </div>
                 </td>
                 <td style="text-align:right">${valueContent}</td>
+            `;
+        } else {
+            tr.innerHTML = `
+                <td style="color:${pk.manual ? '#e34c26' : '#ffd700'}; font-weight:600">
+                    <input type="text" value="${pk.name || '#'+(i+1)}" 
+                           style="background:transparent; border:none; color:inherit; width:60px"
+                           onchange="state.activeLane.peaks[${i}].name = this.value;">
+                </td>
+                <td style="text-align:center">${pk.rf.toFixed(3)}${pk.manual ? '<span style="color:#e34c26; margin-left:2px">*</span>' : ''}</td>
+                <td style="text-align:right">${pk.area.toLocaleString(undefined, {maximumFractionDigits:1})}</td>
+                <td style="text-align:right; font-weight:700">${totalArea > 0 ? ((pk.area/totalArea)*100).toFixed(1) : 0}%</td>
+                <td style="text-align:center">
+                    <input type="number" step="0.1" value="${pk.absRatio || 1}" 
+                           style="background:transparent; border:1px solid rgba(255,255,255,0.2); border-radius:4px; color:#fff; width:60px; text-align:center"
+                           onchange="state.activeLane.peaks[${i}].absRatio = parseFloat(this.value) || 1; renderProfiles();">
+                </td>
+                <td style="text-align:right; font-weight:700; color:#58a6ff">${totalCorrArea > 0 ? ((corrArea/totalCorrArea)*100).toFixed(1) : 0}%</td>
             `;
         }
         tbody.appendChild(tr);
@@ -974,11 +1061,27 @@ async function exportReport(type = null) {
 
         const totalArea = (l.peaks || []).reduce((s, pk) => s + pk.area, 0);
         const totalCorrArea = (l.peaks || []).reduce((s, pk) => s + (pk.area / (pk.absRatio || 1)), 0);
+        const mwCurve = state.integrationMethod === 'mw_calibration' ? calculateMWCalibrationCurve() : null;
         const calCurve = state.integrationMethod === 'calibration' ? calculateCalibrationCurve() : null;
 
         const rows = (l.peaks || []).map((pk, i) => {
             const corrArea = pk.area / (pk.absRatio || 1);
-            if (state.integrationMethod === 'relative') {
+            if (state.integrationMethod === 'mw_calibration') {
+                const type = pk.type || 'N';
+                let mwStr = '-';
+                const mwVal = mwCurve ? mwCurve(pk.rf) : null;
+                if (type === 'S') mwStr = pk.mwValue ? pk.mwValue.toString() : 'N/A';
+                else if (type === 'N') mwStr = 'N/A';
+                else if (type === 'A') mwStr = mwVal !== null ? mwVal.toFixed(1) : 'Need 2+ Standards';
+
+                return `
+                <tr style="${pk.manual ? 'background: rgba(227, 76, 38, 0.05);' : ''}">
+                    <td style="color:${pk.manual ? '#e34c26' : 'inherit'}; font-weight:${pk.manual?'600':'normal'}">${pk.name || '#'+(i+1)}</td>
+                    <td style="text-align:center">${pk.rf.toFixed(3)}${pk.manual ? '<span style="color:#e34c26; margin-left:2px">*</span>' : ''}</td>
+                    <td style="text-align:center; font-weight:700">${type}</td>
+                    <td style="text-align:right; font-weight:700; color:#58a6ff">${mwStr}</td>
+                </tr>`;
+            } else if (state.integrationMethod === 'relative') {
                 return `
                 <tr style="${pk.manual ? 'background: rgba(227, 76, 38, 0.05);' : ''}">
                     <td style="color:${pk.manual ? '#e34c26' : 'inherit'}; font-weight:${pk.manual?'600':'normal'}">${pk.name || '#'+(i+1)}</td>
@@ -1006,9 +1109,11 @@ async function exportReport(type = null) {
             }
         }).join('');
 
-        const tableHeaders = state.integrationMethod === 'relative' 
-            ? `<tr><th>PEAK NAME</th><th style="text-align:center">Rf</th><th style="text-align:right">AREA (AU)</th><th style="text-align:right">% AREA</th><th style="text-align:center">ABS RATIO</th><th style="text-align:right">% CORR. AREA</th></tr>`
-            : `<tr><th>PEAK NAME</th><th style="text-align:center">Rf</th><th style="text-align:right">AREA (AU)</th><th style="text-align:center">TYPE</th><th style="text-align:right">VALUE</th></tr>`;
+        const tableHeaders = state.integrationMethod === 'mw_calibration'
+            ? `<tr><th>PEAK NAME</th><th style="text-align:center">Rf</th><th style="text-align:center">TYPE</th><th style="text-align:right">MW (kDa)</th></tr>`
+            : state.integrationMethod === 'relative' 
+                ? `<tr><th>PEAK NAME</th><th style="text-align:center">Rf</th><th style="text-align:right">AREA (AU)</th><th style="text-align:right">% AREA</th><th style="text-align:center">ABS RATIO</th><th style="text-align:right">% CORR. AREA</th></tr>`
+                : `<tr><th>PEAK NAME</th><th style="text-align:center">Rf</th><th style="text-align:right">AREA (AU)</th><th style="text-align:center">TYPE</th><th style="text-align:right">VALUE</th></tr>`;
 
         reportHtml += `
         <div class="page-break">
