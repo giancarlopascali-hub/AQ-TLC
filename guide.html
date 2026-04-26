@@ -46,8 +46,12 @@
 
     <h2>3. Interacting With Integrated Lanes</h2>
     <p>Once "Find Lanes" calculates the density arrays, the detailed Densitogram analysis bar deploys on the right. This engine maps the exact signal footprint pixel by pixel.</p>
-    <ul>
-        <li><strong>Naming:</strong> By default, peaks are marked `Lane 1`, `Peak 1`, etc. Click directly on the corresponding text box field to rename them meaningfully for your custom exports.</li>
+        <li><strong>Interactive Chart:</strong> 
+            <ul>
+                <li><strong>Horizontal Zooming:</strong> Hover over the densitogram and use your <strong>mouse wheel</strong> to zoom in on specific signal regions for precise inspection.</li>
+                <li><strong>Naming:</strong> By default, peaks are marked `Lane 1`, `Peak 1`, etc. Click directly on the corresponding text box field to rename them meaningfully for your custom exports.</li>
+            </ul>
+        </li>
         <li><strong>Automated Peak Discovery:</strong> Drag the <strong>Sensitivity (Sens.)</strong>, <strong>Resolution (Res.)</strong>, and <strong>Width %</strong> threshold sliders in the left panel to instantly tighten integration tolerances natively across your current sample until it maps purely against valid signals.</li>
         <li><strong>Direct Densitogram Overrides:</strong> Automation isn't flawless for skewed plates. You can bypass the algorithms and draw completely manually. Any manually altered peaks will turn <strong>red</strong> in the chart, and will be explicitly marked with an asterisk <strong>(*)</strong> in the Rf column to visibly designate a manual override.
             <ul>
@@ -67,7 +71,7 @@
                 <li><strong>Abs Ratio:</strong> Use this correction factor to account for differences in staining or absorption. Setting it to `0.5` will double the "Corrected Area" relative to other peaks with a ratio of `1`.</li>
             </ul>
         </li>
-        <li><strong>Calibration:</strong> This powerful mode allows for absolute quantification using a <strong>Global Calibration Curve</strong> derived from your standards.
+        <li><strong>Area Calibration:</strong> This powerful mode allows for absolute quantification using a <strong>Global Calibration Curve</strong> derived from your standards.
             <ul>
                 <li><strong>Type S (Standard):</strong> Use this for peaks with a precisely known concentration or amount. When selected, you can enter the numerical value in the <strong>Value</strong> column.</li>
                 <li><strong>Type N (Neutral):</strong> The default state. These peaks are integrated but not used for calibration calculations or quantification.</li>
@@ -78,9 +82,10 @@
     </ul>
 
     <h2>5. Exporting High-Quality Reports</h2>
-    <p>When you achieve the integration profile required, use the native printing modules to archive robust, laboratory-grade PDF documentation logs. Reports automatically adapt to reflect your active integration modality (Relative or Calibration):</p>
+    <p>When you achieve the integration profile required, use the native printing modules to archive robust, laboratory-grade PDF documentation logs. Reports automatically adapt to reflect your active integration modality (Relative or Area Calibration):</p>
     <ul>
       <li><strong>Export Lane:</strong> Located inside individual pane cards. Clicking this generates a targeted report for the specific lane currently selected.</li>
+      <li><strong>Reset integration (🔄):</strong> Located inside individual pane cards. This button clears all manual edits for the specific lane and re-runs the automated peak detection algorithm based on current slider settings.</li>
       <li><strong>Full Report:</strong> Rapidly stitches every active lane into a beautifully segmented, multipage document sequence.</li>
     </ul>
 

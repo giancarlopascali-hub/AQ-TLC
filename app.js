@@ -97,9 +97,12 @@ function render() {
             const rb = pk.rb !== undefined ? pk.rb : Math.min(n-1, pk.idx + 5);
             const y_top = (0.5 - rb/(n-1)) * l.h * sy;
             const y_bot = (0.5 - lb/(n-1)) * l.h * sy;
-            ctx.fillStyle = isA ? 'rgba(255,215,0,0.22)' : 'rgba(255,215,0,0.1)';
+            
+            const color = pk.manual ? '227, 76, 38' : '255, 215, 0';
+            ctx.fillStyle = isA ? `rgba(${color}, 0.25)` : `rgba(${color}, 0.12)`;
             ctx.fillRect(-(l.w*sx)/2, y_top, l.w*sx, y_bot - y_top);
-            ctx.strokeStyle = isA ? 'rgba(255,215,0,0.7)' : 'rgba(255,215,0,0.3)';
+            
+            ctx.strokeStyle = isA ? `rgba(${color}, 0.7)` : `rgba(${color}, 0.3)`;
             ctx.lineWidth = 1/state.view.zoom;
             ctx.beginPath(); ctx.moveTo(-(l.w*sx)/2, y_top); ctx.lineTo((l.w*sx)/2, y_top); ctx.stroke();
             ctx.beginPath(); ctx.moveTo(-(l.w*sx)/2, y_bot); ctx.lineTo((l.w*sx)/2, y_bot); ctx.stroke();
@@ -236,7 +239,7 @@ function renderProfiles() {
                 <button class="tab-btn ${state.integrationMethod === 'relative' ? 'active' : ''}" 
                         onclick="state.integrationMethod = 'relative'; renderProfiles();">Relative Intensity</button>
                 <button class="tab-btn ${state.integrationMethod === 'calibration' ? 'active' : ''}" 
-                        onclick="state.integrationMethod = 'calibration'; renderProfiles();">Calibration</button>
+                        onclick="state.integrationMethod = 'calibration'; renderProfiles();">Area Calibration</button>
             </div>
             <table class="integration-table" style="width:100%">
                 <thead>
@@ -272,6 +275,7 @@ function renderProfiles() {
         const corrArea = pk.area / (pk.absRatio || 1);
         const tr = document.createElement('tr');
         tr.style.borderBottom = '1px solid var(--border)';
+        if (pk.manual) tr.style.background = 'rgba(227, 76, 38, 0.15)';
         
         if (state.integrationMethod === 'relative') {
             tr.innerHTML = `
@@ -976,7 +980,7 @@ async function exportReport(type = null) {
             const corrArea = pk.area / (pk.absRatio || 1);
             if (state.integrationMethod === 'relative') {
                 return `
-                <tr>
+                <tr style="${pk.manual ? 'background: rgba(227, 76, 38, 0.05);' : ''}">
                     <td style="color:${pk.manual ? '#e34c26' : 'inherit'}; font-weight:${pk.manual?'600':'normal'}">${pk.name || '#'+(i+1)}</td>
                     <td style="text-align:center">${pk.rf.toFixed(3)}${pk.manual ? '<span style="color:#e34c26; margin-left:2px">*</span>' : ''}</td>
                     <td style="text-align:right">${pk.area.toFixed(1)}</td>
@@ -992,7 +996,7 @@ async function exportReport(type = null) {
                 else if (type === 'A') valStr = calCurve ? calCurve(pk.area).toFixed(2) : '-';
 
                 return `
-                <tr>
+                <tr style="${pk.manual ? 'background: rgba(227, 76, 38, 0.05);' : ''}">
                     <td style="color:${pk.manual ? '#e34c26' : 'inherit'}; font-weight:${pk.manual?'600':'normal'}">${pk.name || '#'+(i+1)}</td>
                     <td style="text-align:center">${pk.rf.toFixed(3)}${pk.manual ? '<span style="color:#e34c26; margin-left:2px">*</span>' : ''}</td>
                     <td style="text-align:right">${pk.area.toFixed(1)}</td>
