@@ -19,9 +19,8 @@ jobs:
           HF_TOKEN: ${{ secrets.HF_TOKEN }}
         run: |
           git checkout --orphan hf-deploy
-          # Remove test images, logs, and old backup files
-          git rm -rf --cached *.jpg *.png *.log app_old.js || true
-          rm -f *.jpg *.png *.log app_old.js || true
+          # Robustly remove all images and logs from the deployment branch
+          find . -type f \( -name "*.jpg" -o -name "*.png" -o -name "*.log" \) -exec git rm --cached {} + || true
           git config --global user.email "action@github.com"
           git config --global user.name "GitHub Action"
           git commit -m "Deploy clean snapshot to HF Space"
