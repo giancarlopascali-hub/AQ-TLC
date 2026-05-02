@@ -47,11 +47,13 @@ function render() {
   // Lines (Origin/Front)
   state.lines.forEach(l => {
     const isS = state.activeLine === l;
-    ctx.save(); ctx.translate(l.cx*sx, l.cy*sy); ctx.rotate(l.angle || 0);
-    ctx.strokeStyle = isS ? '#ffc107' : '#238636'; if (l.cy > state.imgH*0.5) ctx.strokeStyle = isS ? '#ffc107' : '#f0883e';
+    const pos = getImageCanvasPos(l.cx, l.cy, sx, sy);
+    const isOrigin = pos.cy > (state.imgH*sy)/2;
+    ctx.save(); ctx.translate(l.cx*sx, l.cy*sy); ctx.rotate((l.angle || 0) - state.imageRotation);
+    ctx.strokeStyle = isS ? '#ffc107' : (isOrigin ? '#f0883e' : '#238636');
     ctx.lineWidth = 4/state.view.zoom; ctx.beginPath(); ctx.moveTo(-l.w*sx/2, 0); ctx.lineTo(l.w*sx/2, 0); ctx.stroke();
     ctx.fillStyle = ctx.strokeStyle; ctx.font = `bold ${12/state.view.zoom}px Inter`;
-    ctx.fillText(l.cy > state.imgH*0.5 ? "ORIGIN" : "FRONT", -l.w*sx/2, -8/state.view.zoom);
+    ctx.fillText(isOrigin ? "ORIGIN" : "FRONT", -l.w*sx/2, -8/state.view.zoom);
     ctx.restore();
   });
 
@@ -61,23 +63,41 @@ function render() {
   const uniquePairs = [];
   while (pool.length >= 2) {
     const l1 = pool.shift();
-    // Find closest partner line vertically
+    const l1_pos = getImageCanvasPos(l1.cx, l1.cy, sx, sx);
     let bestIdx = -1; let minDist = Infinity;
     for (let i=0; i<pool.length; i++) {
-        const d = Math.sqrt((l1.cx-pool[i].cx)**2 + (l1.cy-pool[i].cy)**2);
-        if (d < minDist && Math.abs(l1.cy - pool[i].cy) > 50) { minDist = d; bestIdx = i; }
+        const pool_i_pos = getImageCanvasPos(pool[i].cx, pool[i].cy, sx, sx);
+        const d = Math.sqrt((l1_pos.cx-pool_i_pos.cx)**2 + (l1_pos.cy-pool_i_pos.cy)**2);
+        if (d < minDist && Math.abs(l1_pos.cy - pool_i_pos.cy) > 50 * sx) { minDist = d; bestIdx = i; }
     }
     if (bestIdx !== -1) {
         const l2 = pool.splice(bestIdx, 1)[0];
-        const [f, o] = l1.cy < l2.cy ? [l1, l2] : [l2, l1];
-        uniquePairs.push({ o, f, w: Math.max(o.w, f.w), cy: (o.cy+f.cy)/2, h: Math.abs(o.cy-f.cy)*1.1 });
+        const l2_pos = getImageCanvasPos(l2.cx, l2.cy, sx, sx);
+        const [f, o] = l1_pos.cy < l2_pos.cy ? [l1, l2] : [l2, l1];
+        
+        const f_pos = getImageCanvasPos(f.cx, f.cy, sx, sx);
+        const o_pos = getImageCanvasPos(o.cx, o.cy, sx, sx);
+        const midCanvasX = (o_pos.cx + f_pos.cx) / 2;
+        const midCanvasY = (o_pos.cy + f_pos.cy) / 2;
+        
+        const icx = (state.imgW*sx)/2; const icy = (state.imgH*sx)/2;
+        const ca = Math.cos(-state.imageRotation); const sa = Math.sin(-state.imageRotation);
+        const rx = (midCanvasX - icx) * ca - (midCanvasY - icy) * sa;
+        const ry = (midCanvasX - icx) * sa + (midCanvasY - icy) * ca;
+        
+        uniquePairs.push({ 
+            o, f, 
+            cx: (rx + icx) / sx, cy: (ry + icy) / sx, 
+            w: Math.max(o.w, f.w), 
+            h: Math.abs(o_pos.cy - f_pos.cy) * 1.1 / sx 
+        });
     }
   }
 
   uniquePairs.forEach(p => {
       ctx.save();
-      ctx.translate(p.o.cx * sx, p.cy * sy);
-      ctx.rotate(p.o.angle || 0);
+      ctx.translate(p.cx * sx, p.cy * sy);
+      ctx.rotate(-state.imageRotation);
       ctx.strokeStyle = 'rgba(255, 255, 255, 0.25)'; ctx.setLineDash([6, 3]);
       ctx.strokeRect(-p.w*sx/2, -p.h*sy/2, p.w*sx, p.h*sy);
       ctx.restore();
@@ -628,10 +648,20 @@ function getPos(e, canvas) {
   let x = (scX - state.view.dx) / z; let y = (scY - state.view.dy) / z;
   const sx = canvas.width / state.imgW;
   const icx = (state.imgW*sx)/2; const icy = (state.imgH*sx)/2;
-  x -= icx; y -= icy;
+  let dx = x - icx; let dy = y - icy;
   const sa = Math.sin(-state.imageRotation); const ca = Math.cos(-state.imageRotation);
-  const rx = x * ca - y * sa; const ry = x * sa + y * ca;
-  return { x: (rx + icx) / sx, y: (ry + icy) / sx, scX, scY };
+  const rx = dx * ca - dy * sa; const ry = dx * sa + dy * ca;
+  return { x: (rx + icx) / sx, y: (ry + icy) / sx, scX, scY, cx: x, cy: y };
+}
+
+function getImageCanvasPos(x, y, sx, sy) {
+  const icx = (state.imgW*sx)/2; const icy = (state.imgH*sy)/2;
+  const dx = x*sx - icx; const dy = y*sy - icy;
+  const ca = Math.cos(state.imageRotation); const sa = Math.sin(state.imageRotation);
+  return {
+    cx: dx * ca - dy * sa + icx,
+    cy: dx * sa + dy * ca + icy
+  };
 }
 
 $('canvas-main').onmousedown = e => {
@@ -640,8 +670,18 @@ $('canvas-main').onmousedown = e => {
 
   if (state.activeTool === 'select' || state.activeTool === 'pan') {
     const mHit = state.spottingMarks.find(m => Math.sqrt((p.x-m.x)**2 + (p.y-m.y)**2) < 12);
-    const lHit = state.lines.find(l => Math.abs(p.y-l.cy)<20 && p.x>l.cx-l.w/2 && p.x<l.cx+l.w/2);
-    const lnHit = state.lanes.find(ln => Math.abs(p.x-ln.cx)<ln.w/2 && Math.abs(p.y-ln.cy)<ln.h/2);
+    
+    const canvas = $('canvas-main');
+    const sx = canvas.width / state.imgW;
+    const lHit = state.lines.find(l => {
+      const pos = getImageCanvasPos(l.cx, l.cy, sx, sx);
+      return Math.abs(p.cy - pos.cy) < 20 && Math.abs(p.cx - pos.cx) < (l.w * sx) / 2;
+    });
+    
+    const lnHit = state.lanes.find(ln => {
+      const pos = getImageCanvasPos(ln.cx, ln.cy, sx, sx);
+      return Math.abs(p.cx - pos.cx) < (ln.w * sx) / 2 && Math.abs(p.cy - pos.cy) < (ln.h * sx) / 2;
+    });
 
     if (mHit) { saveState(); state.activeMark = mHit; state.activeLine = null; state.activeLane = null; state.editingField = 'move-mark'; }
     else if (lHit) { saveState(); state.activeLine = lHit; state.activeMark = null; state.activeLane = null; state.editingField = 'move-line'; }
@@ -655,20 +695,30 @@ $('canvas-main').onmousedown = e => {
     }
   } else if (state.activeTool === 'roi') { state.roiRect = { x: p.x, y: p.y, w: 1, h: 1 }; }
   else if (state.activeTool === 'line') {
+    const canvas = $('canvas-main');
+    const sx = canvas.width / state.imgW;
     const hit = state.lines.find(l => {
-        const xPad = Math.max(20, l.w/2);
-        return Math.abs(p.y-l.cy)<15 && p.x>=l.cx-xPad && p.x<=l.cx+xPad;
+        const pos = getImageCanvasPos(l.cx, l.cy, sx, sx);
+        const xPad = Math.max(20, (l.w * sx) / 2);
+        return Math.abs(p.cy - pos.cy) < 15 && Math.abs(p.cx - pos.cx) <= xPad;
     });
     if (hit) {
         saveState(); state.activeLine = hit;
-        state.editingField = (Math.abs(p.x - (hit.cx-hit.w/2)) < 20 || Math.abs(p.x - (hit.cx+hit.w/2)) < 20) ? 'resize-line' : 'move-line';
+        const pos = getImageCanvasPos(hit.cx, hit.cy, sx, sx);
+        const distEdge = Math.abs(Math.abs(p.cx - pos.cx) - (hit.w * sx) / 2);
+        state.editingField = (distEdge < 20) ? 'resize-line' : 'move-line';
     } else {
         saveState();
         const nl = { cx: p.x, cy: p.y, w: 1, angle: 0 }; state.lines.push(nl); state.activeLine = nl; state.editingField = 'resize-line';
     }
   } else if (state.activeTool === 'spotting') {
     saveState();
-    const origins = state.lines.filter(l => l.cy > state.imgH*0.5);
+    const canvas = $('canvas-main');
+    const sx = canvas.width / state.imgW;
+    const origins = state.lines.filter(l => {
+        const pos = getImageCanvasPos(l.cx, l.cy, sx, sx);
+        return pos.cy > (state.imgH*sx)/2;
+    });
     const o = origins.length > 0 ? origins.reduce((p_best, curr) => {
         const d_curr = Math.sqrt((p.x-curr.cx)**2 + (p.y-curr.cy)**2);
         const d_best = Math.sqrt((p.x-p_best.cx)**2 + (p.y-p_best.cy)**2);
@@ -676,10 +726,18 @@ $('canvas-main').onmousedown = e => {
     }) : null;
     
     let targetX = p.x, targetY = p.y;
-    if (o && Math.abs(p.y - o.cy) < 150) { // Snaps only if somewhat close vertically
-        const dx = p.x-o.cx, dy = p.y-o.cy; const cosA = Math.cos(o.angle), sinA = Math.sin(o.angle); 
-        const dist = dx*cosA+dy*sinA; 
-        targetX = o.cx+dist*cosA; targetY = o.cy+dist*sinA;
+    if (o) {
+        const oPos = getImageCanvasPos(o.cx, o.cy, sx, sx);
+        if (Math.abs(p.cy - oPos.cy) < 150 * sx) { // Snaps if close vertically on screen
+            // Snap to the line's visual horizontal axis
+            const icx = (state.imgW*sx)/2; const icy = (state.imgH*sx)/2;
+            const ca = Math.cos(-state.imageRotation); const sa = Math.sin(-state.imageRotation);
+            // Translate target screen point back to image coordinates
+            const rx = (p.cx - icx) * ca - (oPos.cy - icy) * sa;
+            const ry = (p.cx - icx) * sa + (oPos.cy - icy) * ca;
+            targetX = (rx + icx) / sx;
+            targetY = (ry + icy) / sx;
+        }
     }
 
     // Sample intensity logic removed per user request
@@ -689,26 +747,50 @@ $('canvas-main').onmousedown = e => {
   render();
 };
 
+$('canvas-main').ondblclick = e => {
+  if (state.activeTool === 'rotate_img') {
+    saveState();
+    state.imageRotation += Math.PI / 2;
+    render();
+  }
+};
+
 window.onmousemove = e => {
   if (!state.dragStart) return; const p = getPos(e, $('canvas-main'));
   if (state.isPanning) { state.view.dx = state.viewStart.dx+(e.clientX-state.mStart.x); state.view.dy = state.viewStart.dy+(e.clientY-state.mStart.y); }
   else if (state.isRotating) { state.imageRotation = state.rotateStart + (e.clientX-state.mStart.x)*0.002; }
   else if (state.editingField === 'move-mark') { 
-      const origins = state.lines.filter(l => l.cy > state.imgH*0.5);
+      const canvas = $('canvas-main');
+      const sx = canvas.width / state.imgW;
+      const origins = state.lines.filter(l => {
+          const pos = getImageCanvasPos(l.cx, l.cy, sx, sx);
+          return pos.cy > (state.imgH*sx)/2;
+      });
       const o = origins.length > 0 ? origins.reduce((p_best, curr) => {
           const d_curr = Math.sqrt((p.x-curr.cx)**2 + (p.y-curr.cy)**2);
           const d_best = Math.sqrt((p.x-p_best.cx)**2 + (p.y-p_best.cy)**2);
           return d_curr < d_best ? curr : p_best;
       }) : null;
-      if (o && Math.abs(p.y - o.cy) < 150) {
-          const dx = p.x-o.cx, dy = p.y-o.cy, cosA = Math.cos(o.angle), sinA = Math.sin(o.angle); 
-          const dist = dx*cosA+dy*sinA; 
-          state.activeMark.x = o.cx+dist*cosA; state.activeMark.y = o.cy+dist*sinA; 
+      if (o) {
+          const oPos = getImageCanvasPos(o.cx, o.cy, sx, sx);
+          if (Math.abs(p.cy - oPos.cy) < 150 * sx) {
+              const icx = (state.imgW*sx)/2; const icy = (state.imgH*sx)/2;
+              const ca = Math.cos(-state.imageRotation); const sa = Math.sin(-state.imageRotation);
+              const rx = (p.cx - icx) * ca - (oPos.cy - icy) * sa;
+              const ry = (p.cx - icx) * sa + (oPos.cy - icy) * ca;
+              state.activeMark.x = (rx + icx) / sx; 
+              state.activeMark.y = (ry + icy) / sx; 
+          } else { state.activeMark.x = p.x; state.activeMark.y = p.y; }
       } else { state.activeMark.x = p.x; state.activeMark.y = p.y; }
   }
   else if (state.editingField === 'move-line') { state.activeLine.cx = p.x; state.activeLine.cy = p.y; }
   else if (state.editingField === 'move-lane') { state.activeLane.cx = p.x; state.activeLane.cy = p.y; }
-  else if (state.editingField === 'resize-line') { state.activeLine.w = Math.abs(p.x-state.activeLine.cx)*2; }
+  else if (state.editingField === 'resize-line') { 
+      const canvas = $('canvas-main');
+      const sx = canvas.width / state.imgW;
+      const pos = getImageCanvasPos(state.activeLine.cx, state.activeLine.cy, sx, sx);
+      state.activeLine.w = Math.abs(p.cx - pos.cx) * 2 / sx; 
+  }
   else if (state.roiRect && state.activeTool === 'roi') { state.roiRect.w = p.x-state.roiRect.x; state.roiRect.h = p.y-state.roiRect.y; }
   render();
 };
@@ -864,52 +946,79 @@ function init() {
     state.lanes = [];
     const pool = [...state.lines];
     const pairs = [];
+    const canvas = $('canvas-main');
+    const sx = canvas.width / state.imgW;
     while (pool.length >= 2) {
         const l1 = pool.shift();
+        const l1_pos = getImageCanvasPos(l1.cx, l1.cy, sx, sx);
         let bestIdx = -1; let minDist = Infinity;
         for (let i=0; i<pool.length; i++) {
-            const d = Math.sqrt((l1.cx-pool[i].cx)**2 + (l1.cy-pool[i].cy)**2);
-            if (d < minDist && Math.abs(l1.cy - pool[i].cy) > 50) { minDist = d; bestIdx = i; }
+            const pi_pos = getImageCanvasPos(pool[i].cx, pool[i].cy, sx, sx);
+            const d = Math.sqrt((l1_pos.cx-pi_pos.cx)**2 + (l1_pos.cy-pi_pos.cy)**2);
+            if (d < minDist && Math.abs(l1_pos.cy - pi_pos.cy) > 50 * sx) { minDist = d; bestIdx = i; }
         }
         if (bestIdx !== -1) {
             const l2 = pool.splice(bestIdx, 1)[0];
-            const [f, o] = l1.cy < l2.cy ? [l1, l2] : [l2, l1];
+            const l2_pos = getImageCanvasPos(l2.cx, l2.cy, sx, sx);
+            const [f, o] = l1_pos.cy < l2_pos.cy ? [l1, l2] : [l2, l1];
             pairs.push({ o, f, id: pairs.length + 1, w: Math.max(o.w, f.w) });
         }
     }
 
     state.spottingMarks.forEach((m, mi) => {
-        // Find closest Origin line to this mark
+        const m_pos = getImageCanvasPos(m.x, m.y, sx, sx);
+        // Find closest Origin line to this mark on screen
         const bestPair = pairs.reduce((best, curr) => {
-            const d_curr = Math.sqrt((m.x - curr.o.cx)**2 + (m.y - curr.o.cy)**2);
-            const d_best = Math.sqrt((m.x - best.o.cx)**2 + (m.y - best.o.cy)**2);
+            const best_o_pos = getImageCanvasPos(best.o.cx, best.o.cy, sx, sx);
+            const curr_o_pos = getImageCanvasPos(curr.o.cx, curr.o.cy, sx, sx);
+            const d_curr = Math.sqrt((m_pos.cx - curr_o_pos.cx)**2 + (m_pos.cy - curr_o_pos.cy)**2);
+            const d_best = Math.sqrt((m_pos.cx - best_o_pos.cx)**2 + (m_pos.cy - best_o_pos.cy)**2);
             return d_curr < d_best ? curr : best;
         }, pairs[0]);
         
         if (!bestPair) return;
         const {o, f} = bestPair;
-        const oY = o.cy + (m.x - o.cx) * Math.tan(o.angle || 0);
-        const fY = f.cy + (m.x - f.cx) * Math.tan(f.angle || 0);
-        const h = Math.abs(oY - fY) * 1.10;
-        const cy = (oY + fY) / 2;
+        const o_pos = getImageCanvasPos(o.cx, o.cy, sx, sx);
+        const f_pos = getImageCanvasPos(f.cx, f.cy, sx, sx);
+        
+        const midCanvasX = m_pos.cx;
+        const midCanvasY = (o_pos.cy + f_pos.cy) / 2;
+        const hImg = Math.abs(o_pos.cy - f_pos.cy) * 1.10 / sx;
 
-        // Calculate lane width to avoid overlap with neighbor marks assigned to the same bestPair
+        // Calculate lane width to avoid overlap
         const buddies = state.spottingMarks.filter(bm => {
-            const bBest = pairs.reduce((b, c) => Math.abs(bm.x - c.o.cx) < Math.abs(bm.x - b.o.cx) ? c : b, pairs[0]);
+            const bm_pos = getImageCanvasPos(bm.x, bm.y, sx, sx);
+            const bBest = pairs.reduce((b, c) => {
+                const b_o = getImageCanvasPos(b.o.cx, b.o.cy, sx, sx);
+                const c_o = getImageCanvasPos(c.o.cx, c.o.cy, sx, sx);
+                return Math.abs(bm_pos.cx - c_o.cx) < Math.abs(bm_pos.cx - b_o.cx) ? c : b;
+            }, pairs[0]);
             return bBest === bestPair;
-        }).sort((a, b) => a.x - b.x);
+        }).sort((a, b) => {
+            return getImageCanvasPos(a.x, a.y, sx, sx).cx - getImageCanvasPos(b.x, b.y, sx, sx).cx;
+        });
 
-        let laneW = 35;
+        let laneWCanvas = 35 * sx; // base width
         if (buddies.length > 1) {
             let minDist = Infinity;
-            for (let i = 0; i < buddies.length - 1; i++) minDist = Math.min(minDist, buddies[i + 1].x - buddies[i].x);
-            laneW = Math.min(35, minDist * 0.85);
+            for (let i = 0; i < buddies.length - 1; i++) {
+                const p1 = getImageCanvasPos(buddies[i].x, buddies[i].y, sx, sx);
+                const p2 = getImageCanvasPos(buddies[i+1].x, buddies[i+1].y, sx, sx);
+                minDist = Math.min(minDist, p2.cx - p1.cx);
+            }
+            laneWCanvas = Math.min(35 * sx, minDist * 0.85);
         }
 
+        const icx = (state.imgW*sx)/2; const icy = (state.imgH*sx)/2;
+        const ca = Math.cos(-state.imageRotation); const sa = Math.sin(-state.imageRotation);
+        const rx = (midCanvasX - icx) * ca - (midCanvasY - icy) * sa;
+        const ry = (midCanvasX - icx) * sa + (midCanvasY - icy) * ca;
+        
         state.lanes.push({ 
             id: bestPair.id + "." + (buddies.indexOf(m) + 1), 
-            cx: m.x, cy, w: laneW, h, 
-            angle: bestPair.o.angle || 0, profile: [], peaks: [] 
+            cx: (rx + icx) / sx, cy: (ry + icy) / sx, 
+            w: laneWCanvas / sx, h: hImg, 
+            angle: -state.imageRotation, profile: [], peaks: [] 
         });
     });
 
